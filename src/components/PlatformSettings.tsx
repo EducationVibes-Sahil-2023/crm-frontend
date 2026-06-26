@@ -5,7 +5,7 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icons";
 import { useToast } from "@/components/Toast";
-import { AUTOMATIONS, PLATFORM_FEATURES, ALL_FEATURE_KEYS, loadPlatform, rid, savePlatform, type PlatformConfig, type PlatformPlan, type Review } from "@/lib/platform";
+import { AUTOMATIONS, PLATFORM_FEATURES, ALL_FEATURE_KEYS, loadPlatform, refreshPlatform, rid, savePlatform, type PlatformConfig, type PlatformPlan, type Review } from "@/lib/platform";
 import { readLogo } from "@/lib/branding";
 import { createGmailClient } from "@/lib/gmailApi";
 import { ensureSuperAdminToken, getSuperAdminToken } from "@/lib/superAdmin";
@@ -28,7 +28,15 @@ export default function PlatformSettings() {
   const toast = useToast();
   const [cfg, setCfg] = useState<PlatformConfig>(loadPlatform);
   const [tab, setTab] = useState<Tab>("brand");
-  useEffect(() => { savePlatform(cfg); }, [cfg]);
+  const [loaded, setLoaded] = useState(false);
+  // Load the saved config from the backend first, so we never overwrite the DB
+  // with defaults before it has hydrated.
+  useEffect(() => {
+    let active = true;
+    refreshPlatform().then((c) => { if (active) { setCfg(c); setLoaded(true); } }).catch(() => { if (active) setLoaded(true); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => { if (loaded) savePlatform(cfg); }, [cfg, loaded]);
 
   const setBrand = (k: keyof PlatformConfig["brand"], v: string) => setCfg((c) => ({ ...c, brand: { ...c.brand, [k]: v } }));
   const setLanding = (k: keyof PlatformConfig["landing"], v: string) => setCfg((c) => ({ ...c, landing: { ...c.landing, [k]: v } }));

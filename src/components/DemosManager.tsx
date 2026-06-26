@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
-import { DEMOS_EVENT, demoWhen, loadDemos, setDemoStatus, type Demo, type DemoStatus } from "@/lib/demos";
+import { DEMOS_EVENT, demoWhen, loadDemos, refreshDemos, setDemoStatus, type Demo, type DemoStatus } from "@/lib/demos";
 import { loadPlatform } from "@/lib/platform";
 import { createGmailClient, type GmailClient, type GmailStatus, type CalendarEvent } from "@/lib/gmailApi";
 import { getSuperAdminToken } from "@/lib/superAdmin";
@@ -92,9 +92,9 @@ export default function DemosManager() {
 
   useEffect(() => {
     const refresh = () => setDemos(loadDemos());
+    refreshDemos().then(refresh).catch(() => {}); // pull from the backend on mount
     window.addEventListener(DEMOS_EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    return () => { window.removeEventListener(DEMOS_EVENT, refresh); window.removeEventListener("storage", refresh); };
+    return () => { window.removeEventListener(DEMOS_EVENT, refresh); };
   }, []);
 
   // eslint-disable-next-line react-hooks/set-state-in-effect -- async loader; all setState runs after an await

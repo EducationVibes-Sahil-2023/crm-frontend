@@ -2,7 +2,7 @@
 // Authenticated with the super-admin JWT (the platform-owner console session).
 
 import { ensureSuperAdminToken } from "@/lib/superAdmin";
-import type { Tenant } from "@/lib/tenants";
+import { DB_HOST, REGIONS, type Plan, type Tenant, type TenantStatus } from "@/lib/tenants";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
@@ -39,8 +39,19 @@ export function provisionTenant(t: Tenant): Promise<ProvisionResult> {
       adminEmail: t.adminEmail,
       password: t.tempPassword,
       plan: t.plan,
+      region: t.region,
+      status: t.status,
+      storageGb: t.storageGb,
     }),
   });
+}
+
+/** Update a client's registry record (company, plan, status, admin, etc.). */
+export function updateTenant(
+  database: string,
+  patch: Partial<{ company: string; plan: string; status: string; adminName: string; adminEmail: string; region: string; storageGb: number }>,
+): Promise<{ updated: boolean; database: string }> {
+  return call("/tenants/update", { method: "POST", body: JSON.stringify({ database, ...patch }) });
 }
 
 export type ImpersonateResult = {
@@ -67,8 +78,12 @@ export type ServerClient = {
   company: string;
   slug: string;
   database: string;
+  adminName: string;
   adminEmail: string;
   plan: string;
+  region: string;
+  status: string;
+  storageGb: number;
   active: boolean;
   users: number;
   exists: boolean;
@@ -78,4 +93,28 @@ export type ServerClient = {
 /** Live list of provisioned clients (registry + databases) for the console. */
 export function listTenants(): Promise<{ databases: { database: string; users: number }[]; clients: ServerClient[]; count: number }> {
   return call("/tenants", { method: "GET" });
+}
+
+const PLAN_LABELS: Record<string, Plan> = { free: "Free", starter: "Starter", pro: "Pro", professional: "Pro", enterprise: "Enterprise" };
+const STATUSES: TenantStatus[] = ["Active", "Trial", "Suspended"];
+
+/** Map a backend client row to the UI Tenant shape (database is the source of truth). */
+export function serverClientToTenant(s: ServerClient): Tenant {
+  const status = (STATUSES as string[]).includes(s.status) ? (s.status as TenantStatus) : (s.active ? "Active" : "Suspended");
+  return {
+    id: s.database,
+    company: s.company || s.slug,
+    subdomain: s.slug,
+    adminName: s.adminName || "",
+    adminEmail: s.adminEmail,
+    plan: PLAN_LABELS[(s.plan || "").toLowerCase()] ?? "Starter",
+    status,
+    region: s.region || REGIONS[0],
+    dbName: s.database,
+    dbHost: DB_HOST,
+    users: s.users,
+    storageGb: s.storageGb ?? 0,
+    createdAt: s.createdAt ? new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
+    lastActive: "—",
+  };
 }

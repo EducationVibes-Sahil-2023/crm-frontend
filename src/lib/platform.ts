@@ -3,6 +3,9 @@
 // payment (Razorpay), Google integration, and automation. localStorage-backed.
 
 import { useEffect, useState } from "react";
+import { ensureSuperAdminToken } from "@/lib/superAdmin";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 export type PlatformPlan = { id: string; name: string; price: number; period: string; features: string[]; highlighted?: boolean };
 export type Review = { id: string; name: string; role: string; rating: number; text: string };
@@ -112,7 +115,6 @@ export const DEFAULT_PLATFORM: PlatformConfig = {
   planFeatures: DEFAULT_PLAN_FEATURES,
 };
 
-const KEY = "platform_config_v1";
 const EVENT = "platform:updated";
 
 function clone(c: PlatformConfig): PlatformConfig {
@@ -128,53 +130,94 @@ function clone(c: PlatformConfig): PlatformConfig {
   };
 }
 
-// In-memory cache so repeated reads (e.g. nav/permission checks on every render)
-// skip the localStorage read + JSON.parse + merge. Invalidated on save and when
-// another browser tab writes the key.
-let _cache: PlatformConfig | null = null;
-if (typeof window !== "undefined") {
-  window.addEventListener("storage", (e) => { if (e.key === KEY) _cache = null; });
+// Merge a (partial) stored config onto the defaults so newly-added fields exist.
+function mergeConfig(p: Partial<PlatformConfig> | null | undefined): PlatformConfig {
+  const base = clone(DEFAULT_PLATFORM);
+  if (!p || typeof p !== "object") return base;
+  return {
+    brand: { ...base.brand, ...p.brand },
+    landing: { ...base.landing, ...p.landing, features: p.landing?.features ?? base.landing.features },
+    plans: Array.isArray(p.plans) && p.plans.length ? p.plans : base.plans,
+    reviews: Array.isArray(p.reviews) ? p.reviews : base.reviews,
+    payment: { ...base.payment, ...p.payment },
+    google: { ...base.google, ...p.google },
+    automation: { ...base.automation, ...p.automation },
+    planFeatures: hasLegacyFeatures(p.planFeatures) ? base.planFeatures : { ...base.planFeatures, ...(p.planFeatures ?? {}) },
+  };
 }
+
+// The backend (`settings` table) is the source of truth. An in-memory cache backs
+// the synchronous reads (nav/permission gating); it is hydrated from the server
+// on app load and whenever the config is saved. No browser storage is used.
+let _cache: PlatformConfig | null = null;
 
 export function loadPlatform(): PlatformConfig {
+  return clone(_cache ?? DEFAULT_PLATFORM);
+}
+
+function setCache(cfg: PlatformConfig): void {
+  _cache = clone(cfg);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(EVENT));
+}
+
+// Request de-duplication: a single in-flight fetch is shared by all callers, and
+// a short TTL stops every component mount from re-hitting the backend. Without
+// this, the 6 usePlatform() consumers + the boot hydrate would each fire a GET.
+let _inflight: Promise<PlatformConfig> | null = null;
+let _lastFetch = 0;
+const PLATFORM_TTL = 30_000;
+
+/** Fetch the latest config from the backend DB and refresh the cache. */
+export async function refreshPlatform(force = false): Promise<PlatformConfig> {
   if (typeof window === "undefined") return clone(DEFAULT_PLATFORM);
-  if (_cache) return clone(_cache);
-  let result: PlatformConfig;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) {
-      result = clone(DEFAULT_PLATFORM);
-    } else {
-      const p = JSON.parse(raw) as Partial<PlatformConfig>;
-      const base = clone(DEFAULT_PLATFORM);
-      result = {
-        brand: { ...base.brand, ...p.brand },
-        landing: { ...base.landing, ...p.landing, features: p.landing?.features ?? base.landing.features },
-        plans: Array.isArray(p.plans) && p.plans.length ? p.plans : base.plans,
-        reviews: Array.isArray(p.reviews) ? p.reviews : base.reviews,
-        payment: { ...base.payment, ...p.payment },
-        google: { ...base.google, ...p.google },
-        automation: { ...base.automation, ...p.automation },
-        planFeatures: hasLegacyFeatures(p.planFeatures) ? base.planFeatures : { ...base.planFeatures, ...(p.planFeatures ?? {}) },
-      };
+  if (!force && _cache && Date.now() - _lastFetch < PLATFORM_TTL) return clone(_cache);
+  if (_inflight) return _inflight;
+  _inflight = (async () => {
+    try {
+      const res  = await fetch(`${API_BASE}/platform`, { headers: { "Content-Type": "application/json" } });
+      const data = res.ok ? await res.json() : null;
+      const cfg  = mergeConfig(data?.config ?? null);
+      setCache(cfg);
+      _lastFetch = Date.now();
+      return cfg;
+    } catch {
+      if (!_cache) _cache = clone(DEFAULT_PLATFORM);
+      return clone(_cache);
+    } finally {
+      _inflight = null;
     }
+  })();
+  return _inflight;
+}
+
+let _saveTimer: ReturnType<typeof setTimeout> | null = null;
+async function postPlatform(cfg: PlatformConfig): Promise<void> {
+  try {
+    const token = await ensureSuperAdminToken();
+    await fetch(`${API_BASE}/platform`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ config: cfg }),
+    });
   } catch {
-    result = clone(DEFAULT_PLATFORM);
+    // offline — the cache already reflects the change; the next save retries
   }
-  _cache = result;
-  return clone(result);
 }
 
+/** Update the cache immediately and persist to the backend (debounced). */
 export function savePlatform(c: PlatformConfig): void {
-  _cache = clone(c);
+  setCache(c);
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify(c));
-  // Notify live consumers (landing page, etc.) in this tab.
-  window.dispatchEvent(new CustomEvent(EVENT));
+  if (_saveTimer) clearTimeout(_saveTimer);
+  const snapshot = clone(c);
+  _saveTimer = setTimeout(() => { postPlatform(snapshot); }, 600);
 }
 
-/** Drop the cached config so the next loadPlatform() re-reads from storage. */
 export function clearPlatformCache(): void { _cache = null; }
+
+// Hydrate from the server as soon as this module loads in the browser, so
+// synchronous readers get real data shortly after first paint.
+if (typeof window !== "undefined") { void refreshPlatform(); }
 
 /**
  * Live platform config for client components — re-renders when the Super Admin
@@ -182,19 +225,15 @@ export function clearPlatformCache(): void { _cache = null; }
  * Use this so branding/landing edits reflect immediately on the public site.
  */
 export function usePlatform(): PlatformConfig {
-  // Lazy initializer reads localStorage on the client's first render, so the
-  // real brand shows immediately rather than flashing the default first.
   const [cfg, setCfg] = useState<PlatformConfig>(loadPlatform);
   useEffect(() => {
+    let active = true;
     const read = () => setCfg(loadPlatform());
     read();
-    const onStorage = (e: StorageEvent) => { if (!e.key || e.key === KEY) { _cache = null; read(); } };
+    // Pull the latest from the backend on mount; updates flow via the event.
+    refreshPlatform().then(() => { if (active) read(); }).catch(() => {});
     window.addEventListener(EVENT, read);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener(EVENT, read);
-      window.removeEventListener("storage", onStorage);
-    };
+    return () => { active = false; window.removeEventListener(EVENT, read); };
   }, []);
   return cfg;
 }

@@ -60,24 +60,35 @@ export function getSuperAdminToken(): string | null {
   return window.localStorage.getItem(JWT_KEY);
 }
 
+// Shared in-flight mint so concurrent first-load callers don't each POST.
+let _mintInflight: Promise<string | null> | null = null;
+
 /** Ensure a super-admin JWT is cached, minting one from the backend if needed. */
 export async function ensureSuperAdminToken(): Promise<string | null> {
   const existing = getSuperAdminToken();
   if (existing) return existing;
-  try {
-    const res = await fetch(`${API_BASE_URL}/super-admin/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: SUPER_ADMIN_DEMO.email, password: SUPER_ADMIN_DEMO.password }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json().catch(() => null);
-    if (data?.token && typeof window !== "undefined") {
-      window.localStorage.setItem(JWT_KEY, data.token);
-      return data.token as string;
+  if (_mintInflight) return _mintInflight;
+  _mintInflight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/super-admin/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: SUPER_ADMIN_DEMO.email, password: SUPER_ADMIN_DEMO.password }),
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      if (data?.token && typeof window !== "undefined") {
+        window.localStorage.setItem(JWT_KEY, data.token);
+        return data.token as string;
+      }
+    } catch {
+      /* backend offline — Gmail features just stay disconnected */
     }
-  } catch {
-    /* backend offline — Gmail features just stay disconnected */
+    return null;
+  })();
+  try {
+    return await _mintInflight;
+  } finally {
+    _mintInflight = null;
   }
-  return null;
 }

@@ -1,67 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import ClientForm from "@/components/ClientForm";
 import WelcomeCredentials from "@/components/WelcomeCredentials";
-import { DB_HOST, PLAN_PRICE, PLAN_STYLE, REGIONS, STATUS_STYLE, dbNameFor, fmtMoney, genPassword, loadTenants, mrr, saveTenants, type Plan, type Tenant, type TenantStatus } from "@/lib/tenants";
-import { provisionTenant, dropTenant, impersonateTenant, listTenants, type ServerClient } from "@/lib/tenantsApi";
+import { PLAN_PRICE, PLAN_STYLE, STATUS_STYLE, dbNameFor, fmtMoney, genPassword, mrr, type Tenant, type TenantStatus } from "@/lib/tenants";
+import { provisionTenant, dropTenant, impersonateTenant, listTenants, updateTenant, serverClientToTenant } from "@/lib/tenantsApi";
 import { setImpersonatedSession } from "@/lib/auth";
-
-const PLAN_LABELS: Record<string, Plan> = { free: "Free", starter: "Starter", pro: "Pro", professional: "Pro", enterprise: "Enterprise" };
-
-/** Build a Tenant from a backend client row (used when no local record exists). */
-function serverToTenant(s: ServerClient): Tenant {
-  return {
-    id: s.database,
-    company: s.company || s.slug,
-    subdomain: s.slug,
-    adminName: "",
-    adminEmail: s.adminEmail,
-    plan: PLAN_LABELS[(s.plan || "").toLowerCase()] ?? "Starter",
-    status: s.active ? "Active" : "Suspended",
-    region: REGIONS[0],
-    dbName: s.database,
-    dbHost: DB_HOST,
-    users: s.users,
-    storageGb: 0,
-    createdAt: s.createdAt ? new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
-    lastActive: "—",
-  };
-}
-
-/**
- * Merge the live server clients with any locally-edited records. The server is
- * authoritative for which clients EXIST + their user counts; local records keep
- * the extra UI fields (admin name, region, temp password). Locally-created
- * clients not yet on the server are kept too, so nothing disappears.
- */
-function mergeClients(server: ServerClient[], local: Tenant[]): Tenant[] {
-  const byDb = new Map(local.map((t) => [t.dbName, t]));
-  const serverDbs = new Set(server.map((s) => s.database));
-  const fromServer = server.map((s) => {
-    const existing = byDb.get(s.database);
-    if (!existing) return serverToTenant(s);
-    return {
-      ...existing,
-      company: s.company || existing.company,
-      adminEmail: s.adminEmail || existing.adminEmail,
-      plan: PLAN_LABELS[(s.plan || "").toLowerCase()] ?? existing.plan,
-      users: s.users,
-      status: s.active ? (existing.status === "Trial" ? "Trial" : "Active") : "Suspended",
-    } satisfies Tenant;
-  });
-  const localOnly = local.filter((t) => !serverDbs.has(t.dbName));
-  return [...fromServer, ...localOnly];
-}
 
 export default function ClientsManager() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
-  const [ready, setReady] = useState(false);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [query, setQuery] = useState("");
   const [statusF, setStatusF] = useState("All");
@@ -71,25 +23,28 @@ export default function ClientsManager() {
   const [confirmDel, setConfirmDel] = useState<Tenant | null>(null);
   const [welcome, setWelcome] = useState<Tenant | null>(null);
 
+  // Load the live client list from the database (the single source of truth).
+  const reload = useCallback(async () => {
+    const res = await listTenants();
+    const list = res.clients.map(serverClientToTenant);
+    setTenants(list);
+    setView((v) => (v ? list.find((x) => x.id === v.id) ?? null : v));
+    return list;
+  }, []);
+
   useEffect(() => {
     let active = true;
     (async () => {
-      const local = loadTenants();
       try {
-        // Live clients from the database registry — the real source of truth.
-        const res = await listTenants();
-        if (!active) return;
-        setTenants(mergeClients(res.clients, local));
-      } catch {
-        // Backend offline → fall back to the locally-stored list.
-        if (active) setTenants(local);
+        await reload();
+      } catch (e) {
+        if (active) toast.error("Couldn't load clients", `${(e as Error).message} Is the backend running on :8080?`);
       } finally {
-        if (active) { setLoading(false); setReady(true); }
+        if (active) setLoading(false);
       }
     })();
     return () => { active = false; };
-  }, []);
-  useEffect(() => { if (ready) saveTenants(tenants); }, [tenants, ready]);
+  }, [reload, toast]);
 
   const shown = useMemo(() => tenants.filter((t) => {
     const q = query.trim().toLowerCase();
@@ -97,32 +52,41 @@ export default function ClientsManager() {
       && (statusF === "All" || t.status === statusF);
   }), [tenants, query, statusF]);
 
-  function save(t: Tenant) {
+  async function save(t: Tenant) {
     const isNew = !tenants.some((x) => x.id === t.id);
-    const saved = isNew && !t.tempPassword ? { ...t, tempPassword: genPassword() } : t;
-    setTenants((all) => (all.some((x) => x.id === saved.id) ? all.map((x) => (x.id === saved.id ? saved : x)) : [saved, ...all]));
     setForm({ open: false, edit: null });
-    setView((v) => (v && v.id === saved.id ? saved : v));
-    // New client → provision an isolated database, then show the credentials.
     if (isNew) {
-      setWelcome(saved);
-      provision(saved);
+      // Create → provision the isolated database (writes the registry too), then
+      // show the welcome credentials and refresh from the server.
+      const withPw = t.tempPassword ? t : { ...t, tempPassword: genPassword() };
+      setWelcome(withPw);
+      try {
+        const res = await provisionTenant(withPw);
+        toast.success(
+          res.alreadyExisted ? "Database ready" : "Client created",
+          `${res.database}${res.adminSeeded ? " · admin login seeded" : ""}.`,
+        );
+      } catch (e) {
+        toast.error("Couldn't create client", (e as Error).message);
+      }
+    } else {
+      // Edit → update the registry record.
+      try {
+        await updateTenant(t.dbName, {
+          company: t.company,
+          plan: t.plan,
+          status: t.status,
+          adminName: t.adminName,
+          adminEmail: t.adminEmail,
+          region: t.region,
+          storageGb: t.storageGb,
+        });
+        toast.success("Client updated", `${t.company} saved.`);
+      } catch (e) {
+        toast.error("Couldn't update client", (e as Error).message);
+      }
     }
-  }
-
-  // Create the client's dedicated database (CREATE DATABASE tenant_<slug> + admin).
-  async function provision(t: Tenant) {
-    try {
-      const res = await provisionTenant(t);
-      setTenants((all) => all.map((x) => (x.id === t.id ? { ...x, dbName: res.database, dbHost: res.dbHost } : x)));
-      setView((v) => (v && v.id === t.id ? { ...v, dbName: res.database, dbHost: res.dbHost } : v));
-      toast.success(
-        res.alreadyExisted ? "Database ready" : "Database provisioned",
-        `${res.database}${res.adminSeeded ? " · admin login seeded" : ""}.`,
-      );
-    } catch (e) {
-      toast.error("Database not provisioned", `${(e as Error).message} The client is saved; you can provision later.`);
-    }
+    reload().catch(() => {});
   }
 
   // Super-admin direct login into a client's CRM (no client password needed).
@@ -141,29 +105,54 @@ export default function ClientsManager() {
       });
       toast.success("Entering client workspace", `Signed in as ${res.user.email}.`);
       // Full navigation so the CRM AuthGuard picks up the new tenant session.
-      window.location.href = "/dashboard";
+      window.location.assign("/dashboard");
     } catch (e) {
       toast.error("Couldn't open client CRM", (e as Error).message);
     }
   }
 
-  function showCredentials(t: Tenant) {
-    const ready = t.tempPassword ? t : { ...t, tempPassword: genPassword() };
-    if (!t.tempPassword) setTenants((all) => all.map((x) => (x.id === t.id ? ready : x)));
-    setWelcome(ready);
+  // Re-provision (create the DB + seed admin) for an existing client.
+  async function provision(t: Tenant) {
+    const withPw = t.tempPassword ? t : { ...t, tempPassword: genPassword() };
+    try {
+      const res = await provisionTenant(withPw);
+      toast.success(res.alreadyExisted ? "Database ready" : "Database provisioned", `${res.database}${res.adminSeeded ? " · admin login seeded" : ""}.`);
+      reload().catch(() => {});
+    } catch (e) {
+      toast.error("Database not provisioned", (e as Error).message);
+    }
   }
-  function setStatus(t: Tenant, status: TenantStatus) {
+
+  function showCredentials(t: Tenant) {
+    // The temp password is a one-time generated credential for display only —
+    // it isn't persisted (the real password lives hashed in the client DB).
+    setWelcome(t.tempPassword ? t : { ...t, tempPassword: genPassword() });
+  }
+
+  async function setStatus(t: Tenant, status: TenantStatus) {
+    // Optimistic update, then persist to the registry.
     setTenants((all) => all.map((x) => (x.id === t.id ? { ...x, status } : x)));
     setView((v) => (v && v.id === t.id ? { ...v, status } : v));
-    toast.success(status === "Suspended" ? "Suspended" : "Activated", `${t.company} is now ${status}.`);
+    try {
+      await updateTenant(t.dbName, { status });
+      toast.success(status === "Suspended" ? "Suspended" : "Activated", `${t.company} is now ${status}.`);
+    } catch (e) {
+      toast.error("Couldn't update status", (e as Error).message);
+      reload().catch(() => {});
+    }
   }
-  function remove(t: Tenant) {
-    setTenants((all) => all.filter((x) => x.id !== t.id));
+
+  async function remove(t: Tenant) {
     setConfirmDel(null);
     setView((v) => (v && v.id === t.id ? null : v));
-    // Best-effort: drop the isolated database too.
-    dropTenant(t.dbName).catch(() => {});
-    toast.info("Client removed", `${t.company} and database ${t.dbName} were deprovisioned.`);
+    setTenants((all) => all.filter((x) => x.id !== t.id));
+    try {
+      await dropTenant(t.dbName);
+      toast.info("Client removed", `${t.company} and database ${t.dbName} were deprovisioned.`);
+    } catch (e) {
+      toast.error("Couldn't remove client", (e as Error).message);
+      reload().catch(() => {});
+    }
   }
 
   return (

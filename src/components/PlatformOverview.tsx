@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
-import { PLANS, PLAN_PRICE, PLAN_STYLE, STATUS_STYLE, fmtMoney, loadTenants, mrr, planCounts, type Tenant } from "@/lib/tenants";
-import { loadDemos, demoWhen, type Demo } from "@/lib/demos";
+import { PLANS, PLAN_PRICE, PLAN_STYLE, STATUS_STYLE, fmtMoney, mrr, planCounts, type Tenant } from "@/lib/tenants";
+import { listTenants, serverClientToTenant } from "@/lib/tenantsApi";
+import { refreshDemos, demoWhen, type Demo } from "@/lib/demos";
 
 const PLAN_HEX: Record<string, string> = { Free: "#94a3b8", Starter: "#0ea5e9", Pro: "#2563eb", Enterprise: "#7c3aed" };
 
@@ -19,8 +20,19 @@ export default function PlatformOverview() {
   const [demos, setDemos] = useState<Demo[]>([]);
 
   useEffect(() => {
-    const t = setTimeout(() => { setTenants(loadTenants()); setDemos(loadDemos()); setLoading(false); }, 400);
-    return () => clearTimeout(t);
+    let active = true;
+    (async () => {
+      refreshDemos().then((d) => { if (active) setDemos(d); }).catch(() => {});
+      try {
+        const res = await listTenants();
+        if (active) setTenants(res.clients.map(serverClientToTenant));
+      } catch {
+        // Backend offline — leave the client list empty.
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => { active = false; };
   }, []);
 
   const stats = useMemo(() => ({
