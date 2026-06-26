@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated, checkSession, logout } from "@/lib/auth";
+import { hydrateStore } from "@/lib/dbStore";
 
 // How often to re-verify the session against the backend.
 const POLL_MS = 15_000;
@@ -10,6 +11,7 @@ const POLL_MS = 15_000;
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
+  const [storeReady, setStoreReady] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -17,6 +19,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
     setChecked(true);
+    // Load all app data from the database before showing the app, so the first
+    // render has real data (and never saves defaults back over the DB).
+    hydrateStore().finally(() => setStoreReady(true));
 
     let active = true;
 
@@ -47,7 +52,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     };
   }, [router]);
 
-  if (!checked) {
+  if (!checked || !storeReady) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100">
         <svg className="h-7 w-7 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none">

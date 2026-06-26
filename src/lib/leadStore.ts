@@ -1,10 +1,8 @@
 // Shared, real-time lead intake store. Captured leads (from website forms,
 // Excel/CSV imports and webhooks) are written here and broadcast to any open
-// CRM view via a custom event (same tab) and the storage event (other tabs).
-//
-// This is the local-first stand-in for a backend: the moment a lead is captured
-// anywhere, the Leads table updates live. Swap load/save for API calls + SSE/
-// websockets later without touching the consumers.
+// CRM view via a custom event. Backed by the database (app_store) — see dbStore.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type IntakeChannel = "Website Form" | "Excel Import" | "Webhook" | "Manual";
 
@@ -43,25 +41,13 @@ const KEY = "nexus_intake_leads";
 export const LEADS_EVENT = "nexus-leads-changed";
 
 export function loadIntakeLeads(): IntakeLead[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    const parsed = raw ? (JSON.parse(raw) as IntakeLead[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const list = dbGet<IntakeLead[]>(KEY, []);
+  return Array.isArray(list) ? list : [];
 }
 
 function persist(list: IntakeLead[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-    // Notify listeners in this tab; other tabs get the native `storage` event.
-    window.dispatchEvent(new CustomEvent(LEADS_EVENT));
-  } catch {
-    /* ignore quota errors */
-  }
+  dbSet(KEY, list);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(LEADS_EVENT));
 }
 
 // Build a full IntakeLead from a partial submission + sensible defaults.
@@ -135,13 +121,6 @@ export function captureMany(leads: IntakeLead[]): number {
 export function subscribeLeads(cb: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   const onLocal = () => cb();
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === KEY) cb();
-  };
   window.addEventListener(LEADS_EVENT, onLocal);
-  window.addEventListener("storage", onStorage);
-  return () => {
-    window.removeEventListener(LEADS_EVENT, onLocal);
-    window.removeEventListener("storage", onStorage);
-  };
+  return () => window.removeEventListener(LEADS_EVENT, onLocal);
 }
