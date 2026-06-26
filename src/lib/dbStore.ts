@@ -13,6 +13,29 @@ const cache = new Map<string, unknown>();
 let ready = false;
 let hydrating: Promise<void> | null = null;
 
+// Circuit breaker: after 3 consecutive failures, stop hitting the backend for a
+// cooldown so a down/erroring API isn't hammered. One trial request is allowed
+// once the cooldown passes; a success closes the circuit.
+const MAX_FAILURES = 3;
+const COOLDOWN_MS = 30_000;
+let failures = 0;
+let openUntil = 0;
+
+function circuitOpen(): boolean {
+  return Date.now() < openUntil;
+}
+function recordOk(): void {
+  failures = 0;
+  openUntil = 0;
+}
+function recordFail(): void {
+  failures += 1;
+  if (failures >= MAX_FAILURES) {
+    openUntil = Date.now() + COOLDOWN_MS;
+    failures = 0;
+  }
+}
+
 function emit(): void {
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(STORE_EVENT));
 }
@@ -32,6 +55,8 @@ export async function hydrateStore(force = false): Promise<void> {
   if (typeof window === "undefined") return;
   if (ready && !force) return;
   if (hydrating) return hydrating;
+  // Circuit open → don't hit the backend; let the app render with defaults.
+  if (circuitOpen()) { ready = true; emit(); return; }
   hydrating = (async () => {
     try {
       const res = await fetch(`${API_BASE}/store`, { headers: authHeaders() });
@@ -40,9 +65,12 @@ export async function hydrateStore(force = false): Promise<void> {
         const data = (json && typeof json.data === "object" && json.data) || {};
         cache.clear();
         for (const [k, v] of Object.entries(data)) cache.set(k, v);
+        recordOk();
+      } else {
+        recordFail();
       }
     } catch {
-      /* backend offline — readers fall back to their defaults */
+      recordFail(); // backend offline — readers fall back to their defaults
     } finally {
       ready = true;
       hydrating = null;
@@ -62,14 +90,17 @@ export function dbGet<T>(key: string, fallback: T): T {
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 
 async function put(key: string, value: unknown): Promise<void> {
+  // Circuit open → skip the write; the value stays in the session cache.
+  if (circuitOpen()) return;
   try {
-    await fetch(`${API_BASE}/store/${encodeURIComponent(key)}`, {
+    const res = await fetch(`${API_BASE}/store/${encodeURIComponent(key)}`, {
       method: "PUT",
       headers: authHeaders(),
       body: JSON.stringify({ data: value }),
     });
+    if (res.ok) recordOk(); else recordFail();
   } catch {
-    /* offline — cache holds the value; a later save will retry */
+    recordFail(); // offline — cache holds the value; a later save may retry
   }
 }
 
