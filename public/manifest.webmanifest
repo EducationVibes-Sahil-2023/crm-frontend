@@ -1,0 +1,16 @@
+{
+  "name": "Nexus CRM & HRMS",
+  "short_name": "Nexus",
+  "description": "All-in-one CRM + HRMS — leads, tasks, payroll, attendance, leave and more.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f1f5f9",
+  "theme_color": "#2563eb",
+  "orientation": "portrait-primary",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

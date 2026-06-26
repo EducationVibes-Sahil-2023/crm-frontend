@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Nexus HRMS</title>
+    <style>
+      html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+      .wrap {
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        height: 100%; gap: 18px;
+        background: linear-gradient(135deg, #2563eb, #4f46e5); color: #fff; text-align: center; padding: 24px;
+      }
+      .logo { width: 64px; height: 64px; border-radius: 18px; background: rgba(255,255,255,.18);
+        display: flex; align-items: center; justify-content: center; font-size: 28px; font-weight: 800; }
+      .spin { width: 26px; height: 26px; border: 3px solid rgba(255,255,255,.4); border-top-color: #fff;
+        border-radius: 50%; animation: s .8s linear infinite; }
+      @keyframes s { to { transform: rotate(360deg); } }
+      p { opacity: .85; font-size: 14px; max-width: 280px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="logo">N</div>
+      <div class="spin"></div>
+      <p>Connecting to Nexus HRMS… If this screen stays, check your internet connection.</p>
+    </div>
+  </body>
+</html>

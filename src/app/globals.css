@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f1f5f9;
+  --foreground: #0f172a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, Arial, sans-serif;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(28px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Hide scrollbars while keeping scroll functionality */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Rich text rendered/edited in the Announcements module */
+.announcement-body p {
+  margin: 0 0 0.5rem;
+}
+.announcement-body p:last-child {
+  margin-bottom: 0;
+}
+.announcement-body strong {
+  font-weight: 600;
+  color: #0f172a;
+}
+.announcement-body ul,
+.announcement-body ol {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.25rem;
+}
+.announcement-body ul {
+  list-style: disc;
+}
+.announcement-body ol {
+  list-style: decimal;
+}
+.announcement-body li {
+  margin: 0.125rem 0;
+}
+.announcement-body a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+/* Placeholder for the empty contentEditable editor */
+.announcement-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+/* ---------- Landing page animations ---------- */
+@keyframes nx-fade-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes nx-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-12px); }
+}
+@keyframes nx-blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(20px, -20px) scale(1.08); }
+  66%      { transform: translate(-15px, 12px) scale(0.96); }
+}
+@keyframes nx-shimmer {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* Scroll-reveal: hidden until .nx-in is added by the Reveal observer */
+.nx-reveal { opacity: 0; transform: translateY(24px); transition: opacity .7s cubic-bezier(.22,.61,.36,1), transform .7s cubic-bezier(.22,.61,.36,1); }
+.nx-reveal.nx-in { opacity: 1; transform: translateY(0); }
+
+.nx-float { animation: nx-float 6s ease-in-out infinite; }
+.nx-blob  { animation: nx-blob 18s ease-in-out infinite; }
+.nx-gradient-text {
+  background: linear-gradient(90deg, #2563eb, #4f46e5, #7c3aed, #2563eb);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: nx-shimmer 6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .nx-reveal { opacity: 1; transform: none; transition: none; }
+  .nx-float, .nx-blob, .nx-gradient-text { animation: none; }
+}
+
+/* Marquee (auto-scrolling channel strip) */
+@keyframes nx-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.nx-marquee-mask { -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent); }
+.nx-marquee { display: flex; width: max-content; animation: nx-marquee 30s linear infinite; }
+.nx-marquee-mask:hover .nx-marquee { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .nx-marquee { animation: none; } }
