@@ -9,6 +9,7 @@ import { colorBadge, optionNames } from "@/lib/setup";
 import { STATE_NAMES, allCities, citiesOf } from "@/lib/places";
 import { listDirectory } from "@/lib/directory";
 import { directoryApi, type DirectoryEntry } from "@/lib/directoryApi";
+import { smtpApi } from "@/lib/smtpApi";
 import { getUser } from "@/lib/auth";
 import { DEFAULT_ROLES, TOTAL_PERMS, countGranted, emptyMatrix, loadRoles, roleNames, type Perm } from "@/lib/roles";
 import UserForm, { type UserDraft } from "@/components/UserForm";
@@ -257,7 +258,43 @@ export default function UsersPage() {
       toast.error("Couldn't save", (e as Error).message);
     }
   }
-  const rowHandlers = { onView: openEdit, onEdit: openEdit, onDelete: removeUser };
+  // Email a user their sign-in credentials via the SMTP relay.
+  const [sendingTo, setSendingTo] = useState<string | null>(null);
+  async function sendCredentials(u: User) {
+    if (!u.email) {
+      toast.error("No email", "This user has no email address to send to.");
+      return;
+    }
+    if (!u.password) {
+      toast.error("No password set", `Set a password for ${u.name} before sending credentials.`);
+      return;
+    }
+    const loginUrl = typeof window !== "undefined" ? `${window.location.origin}/login` : "/login";
+    const subject = "Your account credentials";
+    const html = `
+      <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px;margin:0 auto;color:#0f172a">
+        <h2 style="margin:0 0 12px">Welcome${u.name ? `, ${u.name}` : ""} 👋</h2>
+        <p style="margin:0 0 16px;color:#475569">An account has been created for you. Use the credentials below to sign in.</p>
+        <table style="border-collapse:collapse;width:100%;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+          <tr><td style="padding:10px 14px;color:#64748b;width:120px">Email</td><td style="padding:10px 14px;font-weight:600">${u.email}</td></tr>
+          <tr><td style="padding:10px 14px;color:#64748b;border-top:1px solid #e2e8f0">Password</td><td style="padding:10px 14px;font-weight:600;font-family:monospace;border-top:1px solid #e2e8f0">${u.password}</td></tr>
+        </table>
+        <p style="margin:18px 0">
+          <a href="${loginUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600">Sign in</a>
+        </p>
+        <p style="margin:0;color:#94a3b8;font-size:12px">For your security, please change your password after your first sign-in.</p>
+      </div>`;
+    setSendingTo(u.email);
+    try {
+      await smtpApi.send(u.email, subject, html, true);
+      toast.success("Credentials sent", `Login details were emailed to ${u.email}.`);
+    } catch (e) {
+      toast.error("Couldn't send", (e as Error).message);
+    } finally {
+      setSendingTo(null);
+    }
+  }
+  const rowHandlers = { onView: openEdit, onEdit: openEdit, onDelete: removeUser, onSend: sendCredentials, sendingTo };
 
   // Designation / Department / Role master lists are managed in Admin Setup.
   const [designationOptions, setDesignationOptions] = useState<string[]>(["All Designations"]);
@@ -526,7 +563,7 @@ export default function UsersPage() {
             ) : (
               <>
                 {cardsShown.map((u, i) => (
-                  <UserCard key={u.email} user={u} idx={i} roleMeta={roleMeta} onView={openEdit} onEdit={openEdit} />
+                  <UserCard key={u.email} user={u} idx={i} roleMeta={roleMeta} onView={openEdit} onEdit={openEdit} onSend={sendCredentials} sending={sendingTo === u.email} />
                 ))}
                 {/* Infinite-scroll loaders */}
                 {hasMore && Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={`more-${i}`} />)}
@@ -568,7 +605,13 @@ export default function UsersPage() {
 
 // ---------- helpers ----------
 
-type RowHandlers = { onView: (u: User) => void; onEdit: (u: User) => void; onDelete: (u: User) => void };
+type RowHandlers = {
+  onView: (u: User) => void;
+  onEdit: (u: User) => void;
+  onDelete: (u: User) => void;
+  onSend: (u: User) => void;
+  sendingTo: string | null;
+};
 
 function userToDraft(u: User): UserDraft {
   return {
@@ -644,6 +687,7 @@ function renderCell(key: ColKey, u: User, i: number, on?: RowHandlers): ReactNod
 }
 
 function ActionButtons({ user, on }: { user: User; on?: RowHandlers }) {
+  const sending = on?.sendingTo === user.email;
   return (
     <div className="flex items-center justify-end gap-1">
       <button
@@ -653,6 +697,19 @@ function ActionButtons({ user, on }: { user: User; on?: RowHandlers }) {
         className="rounded-md p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600"
       >
         <Icon name="eye" className="h-[18px] w-[18px]" />
+      </button>
+      <button
+        onClick={() => on?.onSend(user)}
+        disabled={sending}
+        title="Email credentials to user"
+        aria-label="Send credentials"
+        className="rounded-md p-1.5 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50"
+      >
+        {sending ? (
+          <span className="block h-[18px] w-[18px] animate-spin rounded-full border-2 border-slate-300 border-t-emerald-600" />
+        ) : (
+          <Icon name="send" className="h-[18px] w-[18px]" />
+        )}
       </button>
       <button
         onClick={() => on?.onEdit(user)}
@@ -713,12 +770,16 @@ function UserCard({
   roleMeta,
   onView,
   onEdit,
+  onSend,
+  sending,
 }: {
   user: User;
   idx: number;
   roleMeta: Record<string, { color: string; granted: number; total: number }>;
   onView: (u: User) => void;
   onEdit: (u: User) => void;
+  onSend: (u: User) => void;
+  sending: boolean;
 }) {
   const rm = roleMeta[user.role];
   const active = user.status === "Active";
@@ -731,6 +792,9 @@ function UserCard({
         </button>
         <button onClick={() => onEdit(user)} title="Edit" aria-label="Edit" className="rounded-md bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur transition hover:bg-amber-50 hover:text-amber-600">
           <Icon name="edit" className="h-3.5 w-3.5" />
+        </button>
+        <button onClick={() => onSend(user)} disabled={sending} title="Email credentials to user" aria-label="Send credentials" className="rounded-md bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur transition hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50">
+          {sending ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-emerald-600" /> : <Icon name="send" className="h-3.5 w-3.5" />}
         </button>
       </div>
 

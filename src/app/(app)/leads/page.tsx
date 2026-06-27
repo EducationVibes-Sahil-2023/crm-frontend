@@ -128,56 +128,8 @@ function loadColumns(): ColState[] | null {
   }
 }
 
-// ---- deterministic sample data (50 rows, India) ----
-const FIRST = ["Aarav", "Vivaan", "Aditya", "Arjun", "Ishaan", "Rohan", "Kabir", "Ananya", "Diya", "Saanvi", "Aadhya", "Myra", "Anika", "Navya", "Priya", "Kavya", "Riya", "Tara"];
-const LAST = ["Sharma", "Verma", "Patel", "Gupta", "Reddy", "Nair", "Iyer", "Khanna", "Joshi", "Mehta", "Rao", "Singh", "Kumar", "Das", "Chopra", "Agarwal", "Pillai", "Bose"];
-const COMPANIES = ["Infosys", "Tata Consultancy", "Wipro", "HCL Technologies", "Reliance Digital", "HDFC Bank", "Flipkart", "Zomato", "Paytm", "Tech Mahindra"];
-const PLACES: [string, string][] = [["Mumbai", "Maharashtra"], ["Bengaluru", "Karnataka"], ["New Delhi", "Delhi"], ["Hyderabad", "Telangana"], ["Chennai", "Tamil Nadu"], ["Pune", "Maharashtra"], ["Kolkata", "West Bengal"], ["Ahmedabad", "Gujarat"], ["Jaipur", "Rajasthan"], ["Kochi", "Kerala"]];
-const STATUSES_D = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
-const SOURCES_D = ["Website", "Referral", "Social", "Email", "Cold Call"];
-const TYPES_D = ["Hot", "Warm", "Cold"];
-const DATES = ["Oct 24, 2023", "Oct 25, 2023", "Oct 26, 2023", "Oct 28, 2023", "Nov 01, 2023", "Nov 02, 2023", "Sep 30, 2023", "Oct 12, 2023"];
-const TIMES = ["45m", "1h 12m", "2h 05m", "3h 40m", "55m", "—"];
-const DURS = ["14m 20s", "8m 05s", "0m", "22m 10s", "31m 50s", "3m 40s", "17m 00s"];
-const LASTUP = ["2h ago", "5h ago", "1d ago", "30m ago", "3d ago", "6h ago", "1h ago"];
-const REFS = ["Education Fair", "Campus Visit", "Justdial", "Pricing page", "Newsletter", "Walk-in", "Alumni referral"];
-const CREATORS = ["Aarav Sharma", "Diya Patel", "Vivaan Reddy"];
 // Team members a lead can be assigned to (shared directory).
 const ASSIGNEES = listDirectory().map((u) => u.name);
-
-const ALL_LEADS: Lead[] = Array.from({ length: 50 }, (_, i) => {
-  const first = FIRST[i % FIRST.length];
-  const last = LAST[(i * 7) % LAST.length];
-  const company = COMPANIES[(i * 3) % COMPANIES.length];
-  const [city, state] = PLACES[(i * 5) % PLACES.length];
-  const status = STATUSES_D[(i * 2) % STATUSES_D.length];
-  const slug = company.toLowerCase().replace(/[^a-z]/g, "");
-  return {
-    id: `lead-${i}`,
-    name: `${first} ${last}`,
-    company,
-    phone: `+91 ${String(70000 + (i % 29999)).padStart(5, "0")} ${String(10000 + ((i * 7) % 89999)).padStart(5, "0")}`,
-    email: `${first.toLowerCase()}.${last.toLowerCase().replace(/[^a-z]/g, "")}${i}@${slug}.com`,
-    city,
-    state,
-    status,
-    source: SOURCES_D[i % SOURCES_D.length],
-    type: TYPES_D[i % TYPES_D.length],
-    followUpDate: DATES[i % DATES.length],
-    connectedDate: status === "New" ? "—" : DATES[(i + 2) % DATES.length],
-    lastUpdated: LASTUP[i % LASTUP.length],
-    assignationDate: DATES[(i + 4) % DATES.length],
-    responseTime: TIMES[i % TIMES.length],
-    referenceName: REFS[i % REFS.length],
-    totalCallCount: i % 15,
-    callCount: i % 6,
-    duration: DURS[i % DURS.length],
-    createdDate: DATES[(i + 1) % DATES.length],
-    updatedDate: DATES[(i + 3) % DATES.length],
-    createdBy: CREATORS[i % CREATORS.length],
-    assignedTo: ASSIGNEES[(i * 3) % ASSIGNEES.length] ?? CREATORS[i % CREATORS.length],
-  };
-});
 
 const STATUS_STYLE: Record<string, string> = {
   New: "bg-sky-100 text-sky-700",
@@ -251,7 +203,9 @@ export default function LeadsPage() {
     // Merge sample leads with anything captured via the Forms/intake channels,
     // newest first. Re-merge live whenever a new lead is captured (this tab or
     // another) so the table updates in real time.
-    const merge = () => setLeads([...(loadIntakeLeads() as unknown as Lead[]), ...ALL_LEADS]);
+    // Show only real leads from the backend (intake/Forms channels). The empty
+    // workspace starts with no leads instead of demo rows.
+    const merge = () => setLeads([...(loadIntakeLeads() as unknown as Lead[])]);
     const t = setTimeout(() => {
       merge();
       setLoading(false);

@@ -8,7 +8,7 @@ import { useToast } from "@/components/Toast";
 import ClientForm from "@/components/ClientForm";
 import WelcomeCredentials from "@/components/WelcomeCredentials";
 import { PLAN_PRICE, PLAN_STYLE, STATUS_STYLE, dbNameFor, fmtMoney, genPassword, mrr, type Tenant, type TenantStatus } from "@/lib/tenants";
-import { provisionTenant, dropTenant, impersonateTenant, listTenants, updateTenant, serverClientToTenant } from "@/lib/tenantsApi";
+import { provisionTenant, dropTenant, impersonateTenant, listTenants, updateTenant, resetTenantPassword, serverClientToTenant } from "@/lib/tenantsApi";
 import { setImpersonatedSession } from "@/lib/auth";
 
 export default function ClientsManager() {
@@ -21,6 +21,7 @@ export default function ClientsManager() {
   const [form, setForm] = useState<{ open: boolean; edit: Tenant | null }>({ open: false, edit: null });
   const [view, setView] = useState<Tenant | null>(null);
   const [confirmDel, setConfirmDel] = useState<Tenant | null>(null);
+  const [confirmReset, setConfirmReset] = useState<Tenant | null>(null);
   const [welcome, setWelcome] = useState<Tenant | null>(null);
 
   // Load the live client list from the database (the single source of truth).
@@ -142,6 +143,20 @@ export default function ClientsManager() {
     }
   }
 
+  // Account recovery — issue a fresh admin password for a locked-out client,
+  // then surface the new credentials so they can be copied / emailed across.
+  async function resetPassword(t: Tenant) {
+    setConfirmReset(null);
+    const pw = genPassword();
+    try {
+      const res = await resetTenantPassword(t.dbName, pw, t.adminEmail || undefined);
+      toast.success("Password reset", `New credentials issued for ${res.adminEmail}.`);
+      setWelcome({ ...t, adminEmail: res.adminEmail || t.adminEmail, adminName: res.adminName || t.adminName, tempPassword: pw });
+    } catch (e) {
+      toast.error("Couldn't reset password", (e as Error).message);
+    }
+  }
+
   async function remove(t: Tenant) {
     setConfirmDel(null);
     setView((v) => (v && v.id === t.id ? null : v));
@@ -224,6 +239,7 @@ export default function ClientsManager() {
                 onLogin={() => loginAsClient(t)}
                 onEdit={() => setForm({ open: true, edit: t })}
                 onCredentials={() => showCredentials(t)}
+                onResetPassword={() => setConfirmReset(t)}
                 onStatus={(s) => setStatus(t, s)}
                 onDelete={() => setConfirmDel(t)}
               />
@@ -259,6 +275,7 @@ export default function ClientsManager() {
                       <button onClick={() => loginAsClient(t)} title="Login as client" className="rounded-md p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"><Icon name="export" className="h-[18px] w-[18px]" /></button>
                       <button onClick={() => setView(t)} title="View" className="rounded-md p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Icon name="eye" className="h-[18px] w-[18px]" /></button>
                       <button onClick={() => showCredentials(t)} title="Welcome & credentials" className="rounded-md p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><Icon name="shield" className="h-[18px] w-[18px]" /></button>
+                      <button onClick={() => setConfirmReset(t)} title="Reset admin password" className="rounded-md p-1.5 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"><Icon name="key" className="h-[18px] w-[18px]" /></button>
                       <button onClick={() => setForm({ open: true, edit: t })} title="Edit" className="rounded-md p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"><Icon name="edit" className="h-[18px] w-[18px]" /></button>
                       {t.status === "Suspended"
                         ? <button onClick={() => setStatus(t, "Active")} title="Activate" className="rounded-md p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"><Icon name="check" className="h-[18px] w-[18px]" /></button>
@@ -276,7 +293,7 @@ export default function ClientsManager() {
 
       {welcome && <WelcomeCredentials tenant={welcome} onClose={() => setWelcome(null)} />}
       {form.open && <ClientForm initial={form.edit} existing={tenants} onClose={() => setForm({ open: false, edit: null })} onSave={save} />}
-      {view && <ClientDrawer tenant={view} onClose={() => setView(null)} onEdit={() => { setForm({ open: true, edit: view }); setView(null); }} onStatus={(s) => setStatus(view, s)} onDelete={() => setConfirmDel(view)} onProvision={() => provision(view.tempPassword ? view : { ...view, tempPassword: genPassword() })} onCredentials={() => showCredentials(view)} />}
+      {view && <ClientDrawer tenant={view} onClose={() => setView(null)} onEdit={() => { setForm({ open: true, edit: view }); setView(null); }} onStatus={(s) => setStatus(view, s)} onDelete={() => setConfirmDel(view)} onProvision={() => provision(view.tempPassword ? view : { ...view, tempPassword: genPassword() })} onCredentials={() => showCredentials(view)} onResetPassword={() => setConfirmReset(view)} />}
       {confirmDel && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setConfirmDel(null)}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
@@ -287,11 +304,21 @@ export default function ClientsManager() {
           </div>
         </div>
       )}
+      {confirmReset && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm" onClick={() => setConfirmReset(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 text-indigo-600"><Icon name="key" className="h-6 w-6" /></div>
+            <h3 className="mt-4 text-center text-base font-bold text-slate-900">Reset admin password?</h3>
+            <p className="mt-1.5 text-center text-sm text-slate-500">A new temporary password will be generated for <span className="font-medium text-slate-700">{confirmReset.adminEmail || confirmReset.company}</span> and the account re-activated. Their current password will stop working.</p>
+            <div className="mt-5 flex gap-2"><button onClick={() => setConfirmReset(null)} className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button><button onClick={() => resetPassword(confirmReset)} className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Reset password</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function TenantCard({ tenant: t, onView, onLogin, onEdit, onCredentials, onStatus, onDelete }: { tenant: Tenant; onView: () => void; onLogin: () => void; onEdit: () => void; onCredentials: () => void; onStatus: (s: TenantStatus) => void; onDelete: () => void }) {
+function TenantCard({ tenant: t, onView, onLogin, onEdit, onCredentials, onResetPassword, onStatus, onDelete }: { tenant: Tenant; onView: () => void; onLogin: () => void; onEdit: () => void; onCredentials: () => void; onResetPassword: () => void; onStatus: (s: TenantStatus) => void; onDelete: () => void }) {
   const suspended = t.status === "Suspended";
   const accent = suspended ? "from-rose-400 to-rose-600" : t.status === "Trial" ? "from-amber-400 to-orange-500" : "from-indigo-500 to-violet-600";
   const stats: [IconName, string, string][] = [
@@ -331,6 +358,7 @@ function TenantCard({ tenant: t, onView, onLogin, onEdit, onCredentials, onStatu
         <button onClick={onLogin} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white transition hover:bg-slate-800"><Icon name="export" className="h-4 w-4" /> Login as client</button>
         <button onClick={onView} title="View" className="rounded-lg border border-slate-200 p-2 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600"><Icon name="eye" className="h-[18px] w-[18px]" /></button>
         <button onClick={onCredentials} title="Credentials" className="rounded-lg border border-slate-200 p-2 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600"><Icon name="shield" className="h-[18px] w-[18px]" /></button>
+        <button onClick={onResetPassword} title="Reset admin password" className="rounded-lg border border-slate-200 p-2 text-slate-400 transition hover:bg-indigo-50 hover:text-indigo-600"><Icon name="key" className="h-[18px] w-[18px]" /></button>
         <button onClick={onEdit} title="Edit" className="rounded-lg border border-slate-200 p-2 text-slate-400 transition hover:bg-amber-50 hover:text-amber-600"><Icon name="edit" className="h-[18px] w-[18px]" /></button>
         {suspended
           ? <button onClick={() => onStatus("Active")} title="Activate" className="rounded-lg border border-slate-200 p-2 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600"><Icon name="check" className="h-[18px] w-[18px]" /></button>
@@ -341,7 +369,7 @@ function TenantCard({ tenant: t, onView, onLogin, onEdit, onCredentials, onStatu
   );
 }
 
-function ClientDrawer({ tenant: t, onClose, onEdit, onStatus, onDelete, onProvision, onCredentials }: { tenant: Tenant; onClose: () => void; onEdit: () => void; onStatus: (s: TenantStatus) => void; onDelete: () => void; onProvision: () => void; onCredentials: () => void }) {
+function ClientDrawer({ tenant: t, onClose, onEdit, onStatus, onDelete, onProvision, onCredentials, onResetPassword }: { tenant: Tenant; onClose: () => void; onEdit: () => void; onStatus: (s: TenantStatus) => void; onDelete: () => void; onProvision: () => void; onCredentials: () => void; onResetPassword: () => void }) {
   const rows: [string, string][] = [
     ["Admin", `${t.adminName} · ${t.adminEmail}`],
     ["Plan", `${t.plan} · ${fmtMoney(PLAN_PRICE[t.plan])}/mo`],
@@ -390,6 +418,7 @@ function ClientDrawer({ tenant: t, onClose, onEdit, onStatus, onDelete, onProvis
             <button onClick={onProvision} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"><Icon name="asset" className="h-4 w-4" /> Provision database</button>
             <button onClick={onCredentials} className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Icon name="shield" className="h-4 w-4" /> Credentials</button>
           </div>
+          <button onClick={onResetPassword} className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100"><Icon name="key" className="h-4 w-4" /> Reset admin password</button>
           <div className="flex gap-2">
             <a href={`https://${t.subdomain}.crm-cloud.app`} target="_blank" rel="noreferrer" className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"><Icon name="export" className="h-4 w-4" /> Open workspace</a>
             <button onClick={onEdit} className="flex items-center justify-center gap-1.5 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"><Icon name="edit" className="h-4 w-4" /> Edit</button>

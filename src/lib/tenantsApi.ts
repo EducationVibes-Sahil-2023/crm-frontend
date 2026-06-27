@@ -15,16 +15,31 @@ export type ProvisionResult = {
   adminEmail: string;
 };
 
-async function call<T>(path: string, init: RequestInit): Promise<T> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Up to 3 attempts. Retries only transient failures (network error or 5xx);
+// client errors (4xx — auth/validation) fail immediately since a retry won't help.
+async function call<T>(path: string, init: RequestInit, retries = 3): Promise<T> {
   const token = await ensureSuperAdminToken();
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const opts: RequestInit = {
     ...init,
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers as Record<string, string>) },
-  });
-  const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new Error(data?.messages?.error ?? data?.error ?? `Request failed (${res.status})`);
-  return data as T;
+  };
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(`${API_BASE_URL}${path}`, opts);
+      const text = await res.text();
+      const data = text ? JSON.parse(text) : null;
+      if (res.ok) return data as T;
+      lastErr = new Error(data?.messages?.error ?? data?.error ?? `Request failed (${res.status})`);
+      if (res.status >= 400 && res.status < 500) break; // client error — don't retry
+    } catch (e) {
+      lastErr = e; // network/parse error — retry
+    }
+    if (attempt < retries) await sleep(300 * attempt);
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Request failed");
 }
 
 /** Create the client's database, its users table, and seed the admin login. */
@@ -65,6 +80,18 @@ export function impersonateTenant(database: string): Promise<ImpersonateResult> 
   return call<ImpersonateResult>("/tenants/impersonate", { method: "POST", body: JSON.stringify({ database }) });
 }
 
+/** Reset a client admin's login password (super-admin account recovery). */
+export function resetTenantPassword(
+  database: string,
+  password: string,
+  adminEmail?: string,
+): Promise<{ reset: boolean; database: string; adminEmail: string; adminName: string }> {
+  return call("/tenants/reset-password", {
+    method: "POST",
+    body: JSON.stringify({ database, password, ...(adminEmail ? { adminEmail } : {}) }),
+  });
+}
+
 export function dropTenant(database: string): Promise<{ database: string }> {
   return call("/tenants/drop", { method: "POST", body: JSON.stringify({ database }) });
 }
@@ -90,9 +117,16 @@ export type ServerClient = {
   createdAt: string | null;
 };
 
+type TenantsList = { databases: { database: string; users: number }[]; clients: ServerClient[]; count: number };
+
+// De-dupe concurrent loads — callers that fire at the same time share one request.
+let _listInflight: Promise<TenantsList> | null = null;
+
 /** Live list of provisioned clients (registry + databases) for the console. */
-export function listTenants(): Promise<{ databases: { database: string; users: number }[]; clients: ServerClient[]; count: number }> {
-  return call("/tenants", { method: "GET" });
+export function listTenants(): Promise<TenantsList> {
+  if (_listInflight) return _listInflight;
+  _listInflight = call<TenantsList>("/tenants", { method: "GET" }).finally(() => { _listInflight = null; });
+  return _listInflight;
 }
 
 const PLAN_LABELS: Record<string, Plan> = { free: "Free", starter: "Starter", pro: "Pro", professional: "Pro", enterprise: "Enterprise" };

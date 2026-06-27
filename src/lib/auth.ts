@@ -62,6 +62,49 @@ export async function login(identifier: string, password: string): Promise<Login
   }
 }
 
+/**
+ * Self-service recovery — ask the backend to email a reset link. Resolves to a
+ * generic message regardless of whether the email is registered (the backend
+ * never reveals that). `devResetUrl` is only present in non-production when SMTP
+ * isn't configured, so the link can still be followed locally.
+ */
+export async function requestPasswordReset(email: string): Promise<{ message: string; devResetUrl?: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(data?.messages?.error ?? data?.error ?? "Couldn't start password recovery.");
+    }
+    return { message: String(data?.message ?? "If an account exists, a reset link is on its way."), devResetUrl: data?.devResetUrl };
+  } catch (e) {
+    if (e instanceof Error && e.message !== "Failed to fetch") throw e;
+    throw new Error("Cannot reach the server. Is the backend running on :8080?");
+  }
+}
+
+/** Complete recovery — set a new password using the emailed token. */
+export async function resetPassword(token: string, password: string): Promise<{ message: string }> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, password }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(data?.messages?.error ?? data?.error ?? "Couldn't reset your password.");
+    }
+    return { message: String(data?.message ?? "Your password has been reset.") };
+  } catch (e) {
+    if (e instanceof Error && e.message !== "Failed to fetch") throw e;
+    throw new Error("Cannot reach the server. Is the backend running on :8080?");
+  }
+}
+
 /** Complete a 2-step login with the authenticator code. */
 export async function verifyTwoFactor(challenge: string, code: string): Promise<LoginResult> {
   try {

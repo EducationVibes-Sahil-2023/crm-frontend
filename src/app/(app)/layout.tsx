@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
+import "@/lib/freshStart"; // one-time: blank demo seed data so a fresh workspace starts empty
 import AuthGuard from "@/components/AuthGuard";
 import AppearanceProvider from "@/components/AppearanceProvider";
 import BrandingProvider from "@/components/BrandingProvider";

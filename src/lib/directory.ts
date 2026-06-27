@@ -1,8 +1,10 @@
 // A lightweight, shared user directory used for announcement audience targeting,
-// task assignment and "view as" previews. Deterministic so it stays stable
-// across renders, and mirrors the team shown on the Users page.
+// task assignment and "view as" previews.
 //
-// The organisation has a single Counsellor department with 10 members.
+// A fresh workspace starts with NO team members — the list is empty until the
+// admin adds real users. (Previously this returned 10 hardcoded sample
+// counsellors, which made every assignee picker / Users page show fake people
+// even on an empty database.)
 
 export type DirectoryUser = {
   name: string;
@@ -13,25 +15,7 @@ export type DirectoryUser = {
 
 export const DEPARTMENT = "Counsellor";
 
-const COUNSELLORS: { first: string; last: string; designation: string }[] = [
-  { first: "Aarav", last: "Sharma", designation: "Senior Counsellor" },
-  { first: "Diya", last: "Patel", designation: "Academic Counsellor" },
-  { first: "Vivaan", last: "Reddy", designation: "Career Counsellor" },
-  { first: "Ananya", last: "Nair", designation: "Admissions Counsellor" },
-  { first: "Aditya", last: "Iyer", designation: "Student Counsellor" },
-  { first: "Ishaan", last: "Gupta", designation: "Senior Counsellor" },
-  { first: "Saanvi", last: "Mehta", designation: "Academic Counsellor" },
-  { first: "Kabir", last: "Khanna", designation: "Career Counsellor" },
-  { first: "Myra", last: "Joshi", designation: "Admissions Counsellor" },
-  { first: "Arjun", last: "Verma", designation: "Student Counsellor" },
-];
-
-const ALL: DirectoryUser[] = COUNSELLORS.map((c) => ({
-  name: `${c.first} ${c.last}`,
-  email: `${c.first.toLowerCase()}.${c.last.toLowerCase()}@educationvibes.in`,
-  department: DEPARTMENT,
-  designation: c.designation,
-}));
+const ALL: DirectoryUser[] = [];
 
 export function listDirectory(): DirectoryUser[] {
   return ALL;

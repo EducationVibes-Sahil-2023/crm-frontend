@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { loadIntakeLeads, subscribeLeads, type IntakeLead } from "@/lib/leadStore";
-import { listDirectory } from "@/lib/directory";
 import { exportCsv } from "@/lib/reportUtils";
 import { BarChart, Card, Donut, MiniTable, RankBars, ReportHeader, StatCard } from "@/components/ReportKit";
 
@@ -17,30 +16,8 @@ type ReportLead = {
   assignedTo: string;
 };
 
-// Deterministic sample set, mirroring the Leads page so the report is populated
-// even before any live intake leads arrive.
-const FIRST = ["Aarav", "Vivaan", "Aditya", "Arjun", "Ishaan", "Rohan", "Kabir", "Ananya", "Diya", "Saanvi", "Aadhya", "Myra", "Anika", "Navya", "Priya", "Kavya", "Riya", "Tara"];
-const LAST = ["Sharma", "Verma", "Patel", "Gupta", "Reddy", "Nair", "Iyer", "Khanna", "Joshi", "Mehta", "Rao", "Singh", "Kumar", "Das", "Chopra", "Agarwal", "Pillai", "Bose"];
-const COMPANIES = ["Infosys", "Tata Consultancy", "Wipro", "HCL Technologies", "Reliance Digital", "HDFC Bank", "Flipkart", "Zomato", "Paytm", "Tech Mahindra"];
-const PLACES: [string, string][] = [["Mumbai", "Maharashtra"], ["Bengaluru", "Karnataka"], ["New Delhi", "Delhi"], ["Hyderabad", "Telangana"], ["Chennai", "Tamil Nadu"], ["Pune", "Maharashtra"], ["Kolkata", "West Bengal"], ["Ahmedabad", "Gujarat"], ["Jaipur", "Rajasthan"], ["Kochi", "Kerala"]];
+// Status order used by the funnel/breakdown charts.
 const STATUSES = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
-const SOURCES = ["Website", "Referral", "Social", "Email", "Cold Call"];
-const TYPES = ["Hot", "Warm", "Cold"];
-const ASSIGNEES = listDirectory().map((u) => u.name);
-
-const SAMPLE: ReportLead[] = Array.from({ length: 50 }, (_, i) => {
-  const [city, state] = PLACES[(i * 5) % PLACES.length];
-  return {
-    name: `${FIRST[i % FIRST.length]} ${LAST[(i * 7) % LAST.length]}`,
-    company: COMPANIES[(i * 3) % COMPANIES.length],
-    city,
-    state,
-    status: STATUSES[(i * 2) % STATUSES.length],
-    source: SOURCES[i % SOURCES.length],
-    type: TYPES[i % TYPES.length],
-    assignedTo: ASSIGNEES[(i * 3) % ASSIGNEES.length] ?? "Unassigned",
-  };
-});
 
 const STATUS_COLOR: Record<string, string> = {
   New: "bg-sky-500", Contacted: "bg-amber-500", Qualified: "bg-indigo-500", Proposal: "bg-violet-500", Won: "bg-emerald-500", Lost: "bg-rose-500",
@@ -61,7 +38,7 @@ export default function LeadsReportPage() {
   const [leads, setLeads] = useState<ReportLead[] | null>(null);
 
   useEffect(() => {
-    const merge = () => setLeads([...loadIntakeLeads().map(intakeToReport), ...SAMPLE]);
+    const merge = () => setLeads([...loadIntakeLeads().map(intakeToReport)]);
     merge();
     return subscribeLeads(merge);
   }, []);

@@ -69,6 +69,7 @@ export type IconName =
   | "inventory"
   | "camera"
   | "shield"
+  | "key"
   | "link"
   | "android"
   | "apple"
@@ -391,6 +392,12 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   shield: <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />,
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="4.5" />
+      <path d="M10.7 12.3 21 2M15 8l3 3M18 5l3 3" />
+    </>
+  ),
   link: (
     <>
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />

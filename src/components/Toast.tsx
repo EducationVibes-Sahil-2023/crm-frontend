@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -44,12 +45,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [remove],
   );
 
-  const value: ToastContextValue = {
+  // Memoised so consumers' `useToast()` keeps a stable identity — otherwise every
+  // toast re-render would re-fire effects that depend on it.
+  const value = useMemo<ToastContextValue>(() => ({
     toast,
     success: (title, message) => toast("success", title, message),
     error: (title, message) => toast("error", title, message),
     info: (title, message) => toast("info", title, message),
-  };
+  }), [toast]);
 
   return (
     <ToastContext.Provider value={value}>

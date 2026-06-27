@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { login, verifyTwoFactor, isAuthenticated, DEMO_CREDENTIALS } from "@/lib/auth";
+import { login, verifyTwoFactor, requestPasswordReset, isAuthenticated, DEMO_CREDENTIALS } from "@/lib/auth";
 import { useToast } from "@/components/Toast";
 import { useBranding } from "@/lib/branding";
 import { usePlatform } from "@/lib/platform";
@@ -27,6 +27,11 @@ export default function LoginPage() {
   const [twofa, setTwofa] = useState<{ challenge: string; name: string } | null>(null);
   const [code, setCode] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
+  // Password recovery (forgot-password) view.
+  const [forgot, setForgot] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSent, setResetSent] = useState<{ message: string; devResetUrl?: string } | null>(null);
 
   // Already signed in? Skip the login screen.
   useEffect(() => {
@@ -118,6 +123,39 @@ export default function LoginPage() {
     }
   }
 
+  function openForgot() {
+    setForgot(true);
+    setResetEmail(email);
+    setResetError(null);
+    setResetSent(null);
+  }
+
+  function closeForgot() {
+    setForgot(false);
+    setResetError(null);
+    setResetSent(null);
+  }
+
+  async function handleForgot(e: React.FormEvent) {
+    e.preventDefault();
+    if (!EMAIL_RE.test(resetEmail.trim())) {
+      setResetError("Enter a valid email address.");
+      return;
+    }
+    setResetError(null);
+    setSubmitting(true);
+    try {
+      const res = await requestPasswordReset(resetEmail);
+      setResetSent(res);
+      toast.success("Check your inbox", "If that email is registered, a reset link is on its way.");
+    } catch (err) {
+      setResetError((err as Error).message);
+      toast.error("Couldn't send reset link", (err as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   const inputBase =
     "w-full rounded-xl border px-4 py-3 text-sm text-slate-900 outline-none transition focus:ring-2";
   const okClasses =
@@ -192,6 +230,79 @@ export default function LoginPage() {
                   {submitting ? "Verifying…" : "Verify & Sign In"}
                 </button>
               </form>
+            </div>
+          ) : forgot ? (
+            <div>
+              <button
+                type="button"
+                onClick={closeForgot}
+                className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-slate-500 hover:text-slate-700"
+              >
+                ← Back to sign in
+              </button>
+              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+                Reset your password
+              </h1>
+              <p className="mt-1 text-sm text-slate-500">
+                Enter your account email and we&apos;ll send you a link to choose a new password.
+              </p>
+
+              {resetSent ? (
+                <div className="mt-7 space-y-4">
+                  <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <span className="mt-0.5">✓</span>
+                    <span>{resetSent.message}</span>
+                  </div>
+                  {resetSent.devResetUrl && (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                      <p className="font-semibold">Email isn&apos;t configured — dev reset link:</p>
+                      <a href={resetSent.devResetUrl} className="mt-1 block break-all font-medium text-amber-900 underline">
+                        {resetSent.devResetUrl}
+                      </a>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={closeForgot}
+                    className="w-full rounded-xl bg-slate-900 py-3.5 text-sm font-bold uppercase tracking-wider text-white transition hover:bg-slate-800"
+                  >
+                    Back to sign in
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {resetError && (
+                    <div className="mt-6 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                      <AlertIcon className="h-4 w-4 shrink-0" />
+                      {resetError}
+                    </div>
+                  )}
+                  <form onSubmit={handleForgot} noValidate className="mt-7 space-y-5">
+                    <div className="relative">
+                      <input
+                        type="email"
+                        autoComplete="email"
+                        autoFocus
+                        value={resetEmail}
+                        onChange={(e) => {
+                          setResetEmail(e.target.value);
+                          if (resetError) setResetError(null);
+                        }}
+                        placeholder="email@nexus.io"
+                        className={`${inputBase} pr-11 ${resetError ? errClasses : okClasses}`}
+                      />
+                      <AtIcon className="pointer-events-none absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3.5 text-sm font-bold uppercase tracking-wider text-white shadow-lg shadow-blue-600/25 transition hover:shadow-xl active:scale-[0.99] disabled:opacity-60"
+                    >
+                      {submitting ? "Sending…" : "Send reset link"}
+                    </button>
+                  </form>
+                </>
+              )}
             </div>
           ) : (
           <>
@@ -301,12 +412,13 @@ export default function LoginPage() {
                 />
                 Persistent session
               </label>
-              <a
-                href="#"
+              <button
+                type="button"
+                onClick={openForgot}
                 className="text-sm font-semibold text-blue-600 hover:underline"
               >
                 Recovery
-              </a>
+              </button>
             </div>
 
             <button
