@@ -21,11 +21,11 @@ export default function AdminLoginPage() {
     if (isSuperAdmin()) router.replace("/admin");
   }, [router]);
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setBusy(true);
-    const res = superAdminLogin(email, password);
+    const res = await superAdminLogin(email, password);
     if (res.ok) {
       toast.success("Welcome back", "Super admin access granted.");
       router.replace("/admin");
@@ -77,7 +77,7 @@ export default function AdminLoginPage() {
           </button>
 
           <p className="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-center text-[11px] text-slate-500">
-            Demo · <span className="font-mono text-slate-700">{SUPER_ADMIN_DEMO.email}</span> / <span className="font-mono text-slate-700">{SUPER_ADMIN_DEMO.password}</span>
+            Credentials are managed in the platform settings.
           </p>
         </form>
 
