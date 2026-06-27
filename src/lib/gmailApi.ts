@@ -98,3 +98,25 @@ export function createGmailClient(tokenProvider: () => string | null): GmailClie
 
 /** Default client for regular logged-in users. */
 export const gmailApi = createGmailClient(getToken);
+
+/**
+ * Turn the backend callback's `?reason=` code into a human, fix-oriented message.
+ * The backend appends it when an OAuth connect fails (see Api\Gmail::callback).
+ */
+export function oauthReasonMessage(reason: string | null): string {
+  switch (reason) {
+    case "invalid_client":
+      return "The Google Client Secret is wrong or was regenerated. Update it in Super Admin → Settings → Google.";
+    case "redirect_uri_mismatch":
+      return "This site's callback URL isn't authorized. Add it under your Google OAuth client's Authorized redirect URIs.";
+    case "invalid_grant":
+      return "The authorization expired or was already used. Try connecting again.";
+    case "access_denied":
+      return "Access was denied on the Google consent screen. If the app is in Testing, add this account as a test user.";
+    case "no_code":
+    case "no_user":
+      return "The Google sign-in didn't complete. Try connecting again.";
+    default:
+      return "Couldn't connect your Google account. Try again, or check the OAuth settings.";
+  }
+}

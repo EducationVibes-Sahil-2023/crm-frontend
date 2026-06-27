@@ -5,7 +5,7 @@ import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { DEMOS_EVENT, demoWhen, loadDemos, refreshDemos, setDemoStatus, type Demo, type DemoStatus } from "@/lib/demos";
 import { loadPlatform } from "@/lib/platform";
-import { createGmailClient, type GmailClient, type GmailStatus, type CalendarEvent } from "@/lib/gmailApi";
+import { createGmailClient, oauthReasonMessage, type GmailClient, type GmailStatus, type CalendarEvent } from "@/lib/gmailApi";
 import { getSuperAdminToken } from "@/lib/superAdmin";
 
 const STATUS_STYLE: Record<DemoStatus, string> = {
@@ -103,10 +103,11 @@ export default function DemosManager() {
   // Returning from Google consent (?connected=1|0).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const c = new URLSearchParams(window.location.search).get("connected");
+    const params = new URLSearchParams(window.location.search);
+    const c = params.get("connected");
     // eslint-disable-next-line react-hooks/set-state-in-effect -- async refetch after returning from Google consent
     if (c === "1") { toast.success("Google connected", "Your calendar is now synced."); refreshGoogle(); }
-    else if (c === "0") { toast.error("Connection failed", "Couldn't connect your Google account."); }
+    else if (c === "0") { toast.error("Connection failed", oauthReasonMessage(params.get("reason"))); }
     if (c) window.history.replaceState(null, "", window.location.pathname);
   }, [refreshGoogle, toast]);
 

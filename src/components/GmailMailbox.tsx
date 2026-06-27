@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
+import { oauthReasonMessage } from "@/lib/gmailApi";
 import type { GmailClient, GmailStatus, GmailListItem, GmailMessage } from "@/lib/gmailApi";
 
 const AVATAR_COLORS = ["bg-blue-100 text-blue-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700", "bg-violet-100 text-violet-700", "bg-rose-100 text-rose-700", "bg-cyan-100 text-cyan-700"];
@@ -78,7 +79,7 @@ export default function GmailMailbox({
         const params = new URLSearchParams(window.location.search);
         const flag = params.get("connected");
         if (flag === "1") toast.success("Gmail connected", "Your inbox is now syncing.");
-        else if (flag === "0") toast.error("Connection failed", "Google didn't grant access. Try connecting again.");
+        else if (flag === "0") toast.error("Connection failed", oauthReasonMessage(params.get("reason")));
         if (flag !== null) window.history.replaceState({}, "", window.location.pathname);
       }
       try {
