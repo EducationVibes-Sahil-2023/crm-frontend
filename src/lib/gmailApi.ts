@@ -113,9 +113,10 @@ export function oauthReasonMessage(reason: string | null): string {
       return "The authorization expired or was already used. Try connecting again.";
     case "access_denied":
       return "Access was denied on the Google consent screen. If the app is in Testing, add this account as a test user.";
-    case "no_code":
     case "no_user":
-      return "The Google sign-in didn't complete. Try connecting again.";
+      return "Your login session wasn't recognized during connect. Log out and log back in, then try connecting again.";
+    case "no_code":
+      return "Google didn't return an authorization code (access may have been denied, or the redirect was blocked).";
     default:
       return "Couldn't connect your Google account. Try again, or check the OAuth settings.";
   }
