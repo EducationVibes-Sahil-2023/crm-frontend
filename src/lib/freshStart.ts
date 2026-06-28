@@ -12,13 +12,15 @@
 // so the UI reflects the empty database. Anything the user creates later
 // overwrites the `"[]"` normally.
 //
-// Only record/data keys are listed here. Config, lookups, preferences, branding
-// and auth keys (priorities, categories, statuses, fields, roles, appearance,
-// token, …) are intentionally left untouched so the app keeps working.
+// DEMO_DATA_KEYS lists record/data keys (blanked to "[]"). Most config,
+// preferences, branding and auth keys (fields, appearance, token, …) are left
+// untouched so the app keeps working — EXCEPT the lookup stores in
+// RESET_TO_DEFAULT_KEYS (admin setup lookups + roles), which are removed so they
+// fall back to their now-empty defaults (no demo statuses/sources/roles/etc.).
 //
 // Bump SEED_RESET_VERSION after adding new keys to force a re-clear.
 
-const SEED_RESET_VERSION = "1";
+const SEED_RESET_VERSION = "3";
 const FLAG_KEY = "nexus_seed_reset";
 
 // Demo/sample record stores (all array-backed) that should start empty.
@@ -51,6 +53,16 @@ const DEMO_DATA_KEYS: string[] = [
   "wa_logs_v1", // whatsapp message log
 ];
 
+// Lookup/config stores that previously shipped demo defaults but should now
+// start EMPTY (admin-defined). Unlike the data keys above we REMOVE them so the
+// loaders fall back to their defaults — which are now empty for the listed
+// lookups (admin_setup_v2: lead status/source/type/sub status, department,
+// designation, ticket category & priority; admin_roles_v1: roles & permissions).
+const RESET_TO_DEFAULT_KEYS: string[] = [
+  "admin_setup_v2", // lead/HR/support lookups
+  "admin_roles_v1", // roles & permissions
+];
+
 /**
  * Blank out demo seed data so a fresh workspace starts empty. Idempotent and
  * safe to call on every load — it no-ops once the current version has run.
@@ -61,6 +73,9 @@ export function clearDemoSeedData(): void {
     if (window.localStorage.getItem(FLAG_KEY) === SEED_RESET_VERSION) return;
     for (const key of DEMO_DATA_KEYS) {
       window.localStorage.setItem(key, "[]");
+    }
+    for (const key of RESET_TO_DEFAULT_KEYS) {
+      window.localStorage.removeItem(key);
     }
     window.localStorage.setItem(FLAG_KEY, SEED_RESET_VERSION);
   } catch {

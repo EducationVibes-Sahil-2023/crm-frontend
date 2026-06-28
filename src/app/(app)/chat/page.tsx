@@ -1,149 +1,196 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import CallModal, { type CallMode } from "@/components/CallModal";
 import {
-  AUTO_REPLIES,
   PRESENCE_STYLES,
   clockTime,
+  contactFromMember,
   dayLabel,
   initials,
-  loadConversations,
-  loadMessages,
-  saveConversations,
-  saveMessages,
   shortTime,
   type Contact,
   type Conversation,
   type Message,
 } from "@/lib/chat";
+import { getUser } from "@/lib/auth";
+import { listTeam, type TeamMember } from "@/lib/team";
+import { chatApi, type ChatMessage, type ChatThread } from "@/lib/chatApi";
 
-type Filter = "All" | "Unread" | "Pinned";
+type Filter = "All" | "Unread";
+
+const OVERVIEW_POLL_MS = 5000;
+const THREAD_POLL_MS = 3000;
 
 export default function ChatPage() {
-  const [conversations, setConversations] = useState<Conversation[]>(loadConversations);
-  const [messages, setMessages] = useState<Message[]>(loadMessages);
-  const [ready, setReady] = useState(false);
-  const [activeId, setActiveId] = useState<string>("conv1");
+  const meId = useMemo(() => getUser()?.id ?? 0, []);
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [overview, setOverview] = useState<ChatThread[]>([]);
+  const [activeUserId, setActiveUserId] = useState<number | null>(null);
+  const [thread, setThread] = useState<ChatMessage[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
   const [showThreadMobile, setShowThreadMobile] = useState(false);
   const [call, setCall] = useState<{ contact: Contact; mode: CallMode } | null>(null);
+  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // localStorage is client-only — re-read on mount, then persist on change.
+  // Build a chat Contact for a user id (falls back to a generic one if the
+  // person isn't in the active roster, e.g. a deactivated account).
+  const contactFor = useCallback(
+    (userId: number): Contact => {
+      const idx = team.findIndex((t) => t.id === userId);
+      if (idx >= 0) return contactFromMember(team[idx], idx);
+      return { id: `u${userId}`, name: `User ${userId}`, role: "", avatarColor: "from-slate-400 to-slate-600", presence: "offline" };
+    },
+    [team],
+  );
+
+  // Initial load: the real workspace roster + conversation overview.
   useEffect(() => {
-    setConversations(loadConversations());
-    setMessages(loadMessages());
-    setReady(true);
+    let active = true;
+    (async () => {
+      const members = await listTeam();
+      if (!active) return;
+      setTeam(members.filter((m) => m.id !== meId));
+      try {
+        setOverview(await chatApi.overview());
+        setError(null);
+      } catch (e) {
+        setError((e as Error).message);
+      }
+      setReady(true);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [meId]);
+
+  // Poll the conversation overview so new incoming messages surface.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      chatApi.overview().then(setOverview).catch(() => {});
+    }, OVERVIEW_POLL_MS);
+    return () => window.clearInterval(id);
   }, []);
-  useEffect(() => {
-    if (ready) saveConversations(conversations);
-  }, [conversations, ready]);
-  useEffect(() => {
-    if (ready) saveMessages(messages);
-  }, [messages, ready]);
 
-  const lastByConv = useMemo(() => {
-    const map: Record<string, Message | undefined> = {};
-    for (const m of messages) {
-      const cur = map[m.conversationId];
-      if (!cur || new Date(m.createdAt) > new Date(cur.createdAt)) map[m.conversationId] = m;
+  // Load + poll the open thread (also marks incoming as read server-side).
+  useEffect(() => {
+    if (activeUserId == null) return;
+    let active = true;
+    const load = async () => {
+      try {
+        const msgs = await chatApi.thread(activeUserId);
+        if (active) setThread(msgs);
+      } catch {
+        /* keep what we have */
+      }
+    };
+    load().then(() => {
+      // First open clears unread — refresh the badge counts.
+      if (active) chatApi.overview().then(setOverview).catch(() => {});
+    });
+    const id = window.setInterval(load, THREAD_POLL_MS);
+    return () => {
+      active = false;
+      window.clearInterval(id);
+    };
+  }, [activeUserId]);
+
+  // Conversation list: people with messages, plus the freshly-opened chat.
+  const conversations = useMemo(() => {
+    const list = overview.map((t) => ({
+      userId: t.userId,
+      contact: contactFor(t.userId),
+      last: { text: t.body, at: t.at, mine: t.mine } as { text: string; at: string; mine: boolean } | null,
+      unread: t.unread,
+    }));
+    if (activeUserId != null && !list.some((c) => c.userId === activeUserId)) {
+      list.unshift({ userId: activeUserId, contact: contactFor(activeUserId), last: null, unread: 0 });
     }
-    return map;
-  }, [messages]);
+    return list;
+  }, [overview, activeUserId, contactFor]);
 
   const visibleConversations = useMemo(() => {
     const q = query.trim().toLowerCase();
     return conversations
-      .filter((c) => (filter === "Unread" ? c.unread > 0 : filter === "Pinned" ? c.pinned : true))
+      .filter((c) => (filter === "Unread" ? c.unread > 0 : true))
       .filter((c) => !q || c.contact.name.toLowerCase().includes(q) || c.contact.role.toLowerCase().includes(q))
-      .sort((a, b) => {
-        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-        const ta = lastByConv[a.id]?.createdAt ?? "";
-        const tb = lastByConv[b.id]?.createdAt ?? "";
-        return tb.localeCompare(ta);
-      });
-  }, [conversations, query, filter, lastByConv]);
+      .sort((a, b) => (b.last?.at ?? "").localeCompare(a.last?.at ?? ""));
+  }, [conversations, query, filter]);
 
-  const active = conversations.find((c) => c.id === activeId) ?? null;
-  const thread = useMemo(
+  const totalUnread = overview.reduce((n, t) => n + t.unread, 0);
+
+  const activeContact = activeUserId != null ? contactFor(activeUserId) : null;
+  const activeConversation: Conversation | null = activeContact
+    ? { id: `conv-u${activeUserId}`, contact: activeContact, pinned: false, muted: false, unread: 0 }
+    : null;
+
+  // Map server messages → the UI bubble shape ("me" vs the contact).
+  const uiMessages: Message[] = useMemo(
     () =>
-      messages
-        .filter((m) => m.conversationId === activeId)
-        .sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [messages, activeId],
+      thread.map((m) => ({
+        id: String(m.id),
+        conversationId: activeConversation?.id ?? "",
+        senderId: m.senderId === meId ? "me" : `u${m.senderId}`,
+        text: m.body,
+        createdAt: m.createdAt,
+        status: m.read ? "read" : "delivered",
+      })),
+    [thread, meId, activeConversation?.id],
   );
 
-  const totalUnread = conversations.reduce((n, c) => n + c.unread, 0);
-
-  function openConversation(id: string) {
-    setActiveId(id);
+  function openConversation(userId: number) {
+    setActiveUserId(userId);
     setShowThreadMobile(true);
-    // mark as read
-    setConversations((list) => list.map((c) => (c.id === id ? { ...c, unread: 0 } : c)));
   }
 
-  function send(text: string) {
-    const trimmed = text.trim();
-    if (!trimmed || !active) return;
-    const now = new Date().toISOString();
-    const mine: Message = {
-      id: `m-${Date.now()}`,
-      conversationId: active.id,
-      senderId: "me",
-      text: trimmed,
-      createdAt: now,
-      status: "sent",
+  function startChatWith(m: TeamMember) {
+    setActiveUserId(m.id);
+    setShowThreadMobile(true);
+    setNewChatOpen(false);
+  }
+
+  async function send(text: string) {
+    const body = text.trim();
+    if (!body || activeUserId == null) return;
+    // Optimistic bubble (negative id) reconciled with the saved message.
+    const temp: ChatMessage = {
+      id: -Date.now(),
+      senderId: meId,
+      recipientId: activeUserId,
+      body,
+      createdAt: new Date().toISOString(),
+      read: false,
     };
-    setMessages((list) => [...list, mine]);
-
-    // Local-first demo: simulate delivery + an auto-reply.
-    const replyText = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
-    setConversations((list) => list.map((c) => (c.id === active.id ? { ...c, typing: true } : c)));
-    window.setTimeout(() => {
-      setMessages((list) => list.map((m) => (m.id === mine.id ? { ...m, status: "delivered" } : m)));
-    }, 600);
-    window.setTimeout(() => {
-      const reply: Message = {
-        id: `m-${Date.now()}-r`,
-        conversationId: active.id,
-        senderId: active.contact.id,
-        text: replyText,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((list) =>
-        list.map((m) => (m.id === mine.id ? { ...m, status: "read" as const } : m)).concat(reply),
-      );
-      setConversations((list) => list.map((c) => (c.id === active.id ? { ...c, typing: false } : c)));
-    }, 1800);
-  }
-
-  function togglePin(id: string) {
-    setConversations((list) => list.map((c) => (c.id === id ? { ...c, pinned: !c.pinned } : c)));
+    setThread((t) => [...t, temp]);
+    try {
+      const saved = await chatApi.send(activeUserId, body);
+      setThread((t) => t.map((m) => (m.id === temp.id ? saved : m)));
+      chatApi.overview().then(setOverview).catch(() => {});
+    } catch (e) {
+      setThread((t) => t.filter((m) => m.id !== temp.id));
+      setError((e as Error).message);
+    }
   }
 
   function startCall(mode: CallMode) {
-    if (active) setCall({ contact: active.contact, mode });
+    if (activeContact) setCall({ contact: activeContact, mode });
   }
 
-  function endCall(durationSec: number, contact: Contact, mode: CallMode) {
-    const conv = conversations.find((c) => c.contact.id === contact.id);
-    if (conv && durationSec > 0) {
-      const label = `${mode === "video" ? "📹 Video" : "📞 Voice"} call · ${formatCallDuration(durationSec)}`;
-      setMessages((list) => [
-        ...list,
-        {
-          id: `m-${Date.now()}-call`,
-          conversationId: conv.id,
-          senderId: "me",
-          text: label,
-          createdAt: new Date().toISOString(),
-          status: "read",
-        },
-      ]);
-    }
+  async function endCall(durationSec: number, mode: CallMode) {
     setCall(null);
+    if (activeUserId == null || durationSec <= 0) return;
+    const label = `${mode === "video" ? "📹 Video" : "📞 Voice"} call · ${formatCallDuration(durationSec)}`;
+    try {
+      await chatApi.send(activeUserId, label);
+      setThread(await chatApi.thread(activeUserId));
+      chatApi.overview().then(setOverview).catch(() => {});
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
@@ -170,7 +217,9 @@ export default function ChatPage() {
               </div>
             </div>
             <button
+              onClick={() => setNewChatOpen(true)}
               aria-label="New chat"
+              title="New chat"
               className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 text-white ring-1 ring-white/25 transition hover:bg-white/25"
             >
               <Icon name="plus" className="h-5 w-5" />
@@ -191,16 +240,14 @@ export default function ChatPage() {
 
         {/* Filter pills */}
         <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
-          {(["All", "Unread", "Pinned"] as Filter[]).map((f) => {
+          {(["All", "Unread"] as Filter[]).map((f) => {
             const activePill = filter === f;
             return (
               <button
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                  activePill
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  activePill ? "bg-blue-600 text-white shadow-sm" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
                 {f}
@@ -214,27 +261,35 @@ export default function ChatPage() {
 
         {/* List */}
         <div className="no-scrollbar flex-1 overflow-y-auto">
-          {visibleConversations.length === 0 ? (
+          {error ? (
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-500">
+                <Icon name="alert" className="h-6 w-6" />
+              </div>
+              <p className="mt-3 text-sm font-semibold text-slate-700">Couldn&apos;t load chat</p>
+              <p className="mt-1 text-xs text-slate-400">{error}</p>
+            </div>
+          ) : !ready ? (
+            <div className="flex flex-col items-center justify-center px-6 py-16 text-center text-slate-400">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+              <p className="mt-3 text-sm">Loading…</p>
+            </div>
+          ) : visibleConversations.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
-                <Icon name="search" className="h-6 w-6" />
+                <Icon name="chat" className="h-6 w-6" />
               </div>
-              <p className="mt-3 text-sm font-semibold text-slate-700">No conversations</p>
-              <p className="mt-1 text-xs text-slate-400">Try a different search or filter.</p>
+              <p className="mt-3 text-sm font-semibold text-slate-700">No conversations yet</p>
+              <p className="mt-1 text-xs text-slate-400">Tap + to start chatting with a teammate.</p>
             </div>
           ) : (
             visibleConversations.map((c) => {
-              const last = lastByConv[c.id];
-              const preview = c.typing
-                ? "typing…"
-                : last
-                  ? `${last.senderId === "me" ? "You: " : ""}${last.text}`
-                  : "No messages yet";
-              const isActive = c.id === activeId;
+              const preview = c.last ? `${c.last.mine ? "You: " : ""}${c.last.text}` : "No messages yet";
+              const isActive = c.userId === activeUserId;
               return (
                 <button
-                  key={c.id}
-                  onClick={() => openConversation(c.id)}
+                  key={c.userId}
+                  onClick={() => openConversation(c.userId)}
                   className={`group flex w-full items-center gap-3 border-l-2 px-4 py-3 text-left transition ${
                     isActive ? "border-blue-600 bg-blue-50/60" : "border-transparent hover:bg-slate-50"
                   }`}
@@ -242,25 +297,16 @@ export default function ChatPage() {
                   <Avatar contact={c.contact} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1.5 truncate text-sm font-semibold text-slate-900">
-                        {c.pinned && <Icon name="pin" className="h-3 w-3 shrink-0 text-blue-500" filled />}
-                        <span className="truncate">{c.contact.name}</span>
-                      </span>
-                      <span className="shrink-0 text-[11px] text-slate-400">
-                        {last ? shortTime(last.createdAt) : ""}
-                      </span>
+                      <span className="truncate text-sm font-semibold text-slate-900">{c.contact.name}</span>
+                      <span className="shrink-0 text-[11px] text-slate-400">{c.last ? shortTime(c.last.at) : ""}</span>
                     </div>
                     <div className="mt-0.5 flex items-center justify-between gap-2">
-                      <span className={`truncate text-xs ${c.typing ? "font-medium text-blue-600" : "text-slate-500"}`}>
-                        {preview}
-                      </span>
-                      {c.unread > 0 ? (
+                      <span className="truncate text-xs text-slate-500">{preview}</span>
+                      {c.unread > 0 && (
                         <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[11px] font-bold text-white">
                           {c.unread}
                         </span>
-                      ) : c.muted ? (
-                        <Icon name="bell" className="h-3.5 w-3.5 shrink-0 text-slate-300" />
-                      ) : null}
+                      )}
                     </div>
                   </div>
                 </button>
@@ -272,13 +318,12 @@ export default function ChatPage() {
 
       {/* ── Thread ────────────────────────────────────────── */}
       <section className={`${showThreadMobile ? "flex" : "hidden"} min-w-0 flex-1 flex-col md:flex`}>
-        {active ? (
+        {activeConversation ? (
           <Thread
-            conversation={active}
-            messages={thread}
+            conversation={activeConversation}
+            messages={uiMessages}
             onBack={() => setShowThreadMobile(false)}
             onSend={send}
-            onTogglePin={() => togglePin(active.id)}
             onStartCall={startCall}
           />
         ) : (
@@ -290,8 +335,12 @@ export default function ChatPage() {
         <CallModal
           contact={call.contact}
           mode={call.mode}
-          onClose={(dur) => endCall(dur, call.contact, call.mode)}
+          onClose={(dur) => endCall(dur, call.mode)}
         />
+      )}
+
+      {newChatOpen && (
+        <NewChatModal team={team} onPick={startChatWith} onClose={() => setNewChatOpen(false)} />
       )}
     </div>
   );
@@ -323,25 +372,22 @@ function Thread({
   messages,
   onBack,
   onSend,
-  onTogglePin,
   onStartCall,
 }: {
   conversation: Conversation;
   messages: Message[];
   onBack: () => void;
   onSend: (text: string) => void;
-  onTogglePin: () => void;
   onStartCall: (mode: CallMode) => void;
 }) {
   const { contact } = conversation;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState("");
 
-  // Keep pinned to the newest message (and when the contact starts typing).
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, conversation.typing, conversation.id]);
+  }, [messages.length, conversation.id]);
 
   function submit() {
     if (!draft.trim()) return;
@@ -366,23 +412,13 @@ function Thread({
             <h2 className="truncate text-sm font-bold text-slate-900">{contact.name}</h2>
             <p className="flex items-center gap-1.5 text-xs text-slate-500">
               <span className={`h-1.5 w-1.5 rounded-full ${PRESENCE_STYLES[contact.presence].dot}`} />
-              {conversation.typing ? (
-                <span className="font-medium text-blue-600">typing…</span>
-              ) : (
-                PRESENCE_STYLES[contact.presence].label
-              )}
+              {contact.role || "Team member"}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
           <HeaderBtn icon="phone" label="Voice call" onClick={() => onStartCall("audio")} />
           <HeaderBtn icon="videoCam" label="Video call" onClick={() => onStartCall("video")} />
-          <HeaderBtn
-            icon="pin"
-            label={conversation.pinned ? "Unpin" : "Pin"}
-            active={conversation.pinned}
-            onClick={onTogglePin}
-          />
           <HeaderBtn icon="more" label="More" filled />
         </div>
       </header>
@@ -392,20 +428,25 @@ function Thread({
         ref={scrollRef}
         className="no-scrollbar flex-1 space-y-1 overflow-y-auto bg-slate-50/60 px-4 py-5 [background-image:radial-gradient(circle_at_1px_1px,rgb(226_232_240_/_0.6)_1px,transparent_0)] [background-size:22px_22px]"
       >
-        {messages.map((m, i) => {
-          const prev = messages[i - 1];
-          const mine = m.senderId === "me";
-          const showDay = !prev || dayLabel(prev.createdAt) !== dayLabel(m.createdAt);
-          // group consecutive bubbles from the same sender
-          const grouped = !!prev && prev.senderId === m.senderId && !showDay;
-          return (
-            <div key={m.id}>
-              {showDay && <DayDivider label={dayLabel(m.createdAt)} />}
-              <Bubble message={m} mine={mine} grouped={grouped} contact={contact} />
-            </div>
-          );
-        })}
-        {conversation.typing && <TypingBubble contact={contact} />}
+        {messages.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center text-center text-sm text-slate-400">
+            <Icon name="chat" className="h-8 w-8 text-slate-300" />
+            <p className="mt-2">No messages yet — say hello 👋</p>
+          </div>
+        ) : (
+          messages.map((m, i) => {
+            const prev = messages[i - 1];
+            const mine = m.senderId === "me";
+            const showDay = !prev || dayLabel(prev.createdAt) !== dayLabel(m.createdAt);
+            const grouped = !!prev && prev.senderId === m.senderId && !showDay;
+            return (
+              <div key={m.id}>
+                {showDay && <DayDivider label={dayLabel(m.createdAt)} />}
+                <Bubble message={m} mine={mine} grouped={grouped} contact={contact} />
+              </div>
+            );
+          })
+        )}
       </div>
 
       {/* Composer */}
@@ -540,32 +581,6 @@ function Bubble({
   );
 }
 
-function TypingBubble({ contact }: { contact: Contact }) {
-  return (
-    <div className="mt-3 flex items-end gap-2">
-      <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${contact.avatarColor} text-[11px] font-bold text-white`}
-      >
-        {initials(contact.name)}
-      </span>
-      <div className="flex items-center gap-1 rounded-2xl rounded-bl-md bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
-        <Dot delay="0ms" />
-        <Dot delay="150ms" />
-        <Dot delay="300ms" />
-      </div>
-    </div>
-  );
-}
-
-function Dot({ delay }: { delay: string }) {
-  return (
-    <span
-      className="h-2 w-2 animate-bounce rounded-full bg-slate-400"
-      style={{ animationDelay: delay, animationDuration: "1s" }}
-    />
-  );
-}
-
 function EmptyThread() {
   return (
     <div className="flex h-full flex-col items-center justify-center bg-slate-50/60 px-6 text-center">
@@ -574,8 +589,80 @@ function EmptyThread() {
       </div>
       <h2 className="mt-5 text-lg font-bold text-slate-800">Your messages</h2>
       <p className="mt-1 max-w-xs text-sm text-slate-500">
-        Select a conversation to start chatting with your team and customers.
+        Select a conversation to start chatting with your team.
       </p>
+    </div>
+  );
+}
+
+function NewChatModal({
+  team,
+  onPick,
+  onClose,
+}: {
+  team: TeamMember[];
+  onPick: (m: TeamMember) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const list = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return s
+      ? team.filter((m) => m.name.toLowerCase().includes(s) || m.email.toLowerCase().includes(s))
+      : team;
+  }, [team, q]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="mt-[8vh] w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <h2 className="text-base font-bold text-slate-900">New chat</h2>
+          <button onClick={onClose} aria-label="Close" className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+            <Icon name="close" className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="border-b border-slate-100 p-3">
+          <div className="relative">
+            <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search people…"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-500/15"
+            />
+          </div>
+        </div>
+        <div className="no-scrollbar max-h-[50vh] overflow-y-auto p-2">
+          {list.length === 0 ? (
+            <p className="px-3 py-10 text-center text-sm text-slate-400">
+              {team.length === 0
+                ? "No other users yet. Create login accounts in Admin Setup → Accounts & Security."
+                : "No people match your search."}
+            </p>
+          ) : (
+            list.map((m, i) => (
+              <button
+                key={m.id}
+                onClick={() => onPick(m)}
+                className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition hover:bg-slate-50"
+              >
+                <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br ${contactFromMember(m, i).avatarColor} text-sm font-bold text-white`}>
+                  {initials(m.name)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-slate-900">{m.name}</span>
+                  <span className="block truncate text-xs text-slate-500">{m.designation || m.role || m.email}</span>
+                </span>
+                <Icon name="chat" className="h-4 w-4 text-slate-300" />
+              </button>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

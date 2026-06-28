@@ -9,6 +9,7 @@ import FreeApiSettings from "@/components/FreeApiSettings";
 import { loadPushConfig } from "@/lib/pushConfig";
 import { countEnabledFreeApis, loadFreeApis } from "@/lib/freeApis";
 import { smtpApi } from "@/lib/smtpApi";
+import { gmailApi, oauthReasonMessage, type GmailStatus } from "@/lib/gmailApi";
 import { allowedFeatures } from "@/lib/access";
 import { getPlan, loadSubscription } from "@/lib/subscription";
 import {
@@ -65,6 +66,54 @@ export default function IntegrationsSettings() {
     saveIntegrations(cfg);
   }, [cfg]);
 
+  // ---- Real Google OAuth (per-workspace, server-backed) ----
+  const [gStatus, setGStatus] = useState<GmailStatus | null>(null);
+  const [gBusy, setGBusy] = useState(false);
+  useEffect(() => {
+    // Handle the post-consent return flag, then load this workspace's real status.
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const flag = params.get("connected");
+      if (flag === "1") toast.success("Google connected", "Your account is linked for this workspace.");
+      else if (flag === "0") toast.error("Connection failed", oauthReasonMessage(params.get("reason")));
+      if (flag !== null) window.history.replaceState({}, "", window.location.pathname);
+    }
+    gmailApi.status().then(setGStatus).catch(() => setGStatus(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function connectGoogleReal() {
+    const id = cfg.google.clientId.trim();
+    const secret = cfg.google.clientSecret.trim();
+    if (!id || !secret) {
+      toast.error("Missing credentials", "Enter this workspace's OAuth Client ID and Secret first.");
+      return;
+    }
+    setGBusy(true);
+    try {
+      // Persist this workspace's own Google app, then start the real OAuth flow.
+      await gmailApi.saveConfig({ clientId: id, clientSecret: secret, redirectUri: cfg.google.redirectUri.trim() });
+      const { url } = await gmailApi.authUrl("/admin-setup/integrations");
+      window.location.href = url;
+    } catch (e) {
+      setGBusy(false);
+      toast.error("Couldn't start Google connect", e instanceof Error && e.message.includes("503") ? "Add your Client ID and Secret, then try again." : "Please try again.");
+    }
+  }
+
+  async function disconnectGoogleReal() {
+    setGBusy(true);
+    try {
+      await gmailApi.disconnect();
+      setGStatus((s) => (s ? { ...s, connected: false, email: "" } : { configured: true, connected: false, email: "" }));
+      toast.info("Disconnected", "Google account was disconnected for this workspace.");
+    } catch {
+      toast.error("Disconnect failed", "Please try again.");
+    } finally {
+      setGBusy(false);
+    }
+  }
+
   // Section updaters.
   const upd = <S extends keyof IntegrationsConfig, K extends keyof IntegrationsConfig[S]>(
     section: S,
@@ -72,21 +121,8 @@ export default function IntegrationsSettings() {
     value: IntegrationsConfig[S][K],
   ) => setCfg((c) => ({ ...c, [section]: { ...c[section], [key]: value } }));
 
-  function connectGoogle() {
-    if (!cfg.google.clientId.trim() || !cfg.google.clientSecret.trim()) {
-      toast.error("Missing credentials", "Enter the OAuth Client ID and Secret first.");
-      return;
-    }
-    setCfg((c) => ({ ...c, google: { ...c.google, connected: true, account: c.google.account || "admin@educationvibes.in" } }));
-    toast.success("Google connected", "OAuth credentials saved. Authorize from your browser to finish.");
-  }
-  function disconnectGoogle() {
-    setCfg((c) => ({ ...c, google: { ...c.google, connected: false, account: "" } }));
-    toast.info("Disconnected", "Google account was disconnected.");
-  }
-
   function requireGoogle(action: string): boolean {
-    if (!cfg.google.connected) {
+    if (!gStatus?.connected) {
       toast.error("Connect Google first", `Connect a Google account before you can ${action}.`);
       return false;
     }
@@ -161,7 +197,7 @@ export default function IntegrationsSettings() {
   const [pushEnabled] = useState(() => loadPushConfig().enabled);
   const [freeActive] = useState(() => countEnabledFreeApis(loadFreeApis()) > 0);
   const status: Record<TabKey, boolean> = {
-    google: cfg.google.connected,
+    google: !!gStatus?.connected,
     calendar: cfg.calendar.enabled,
     meet: cfg.meet.enabled,
     sheets: cfg.sheets.enabled,
@@ -230,10 +266,10 @@ export default function IntegrationsSettings() {
       {!currentLocked && tab === "google" && (
         <Card
           title="Google OAuth"
-          subtitle="Shared credentials used by Calendar, Meet, Sheets, and Gmail."
+          subtitle="This workspace's own Google app — powers Calendar, Meet, Sheets, and Gmail."
           right={
-            <Badge ok={cfg.google.connected}>
-              {cfg.google.connected ? `Connected${cfg.google.account ? ` · ${cfg.google.account}` : ""}` : "Not connected"}
+            <Badge ok={!!gStatus?.connected}>
+              {gStatus?.connected ? `Connected${gStatus.email ? ` · ${gStatus.email}` : ""}` : "Not connected"}
             </Badge>
           }
         >
@@ -269,14 +305,19 @@ export default function IntegrationsSettings() {
             </div>
           </div>
 
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            Add this exact <span className="font-medium text-slate-700">Authorized redirect URI</span> to your Google Cloud OAuth client:
+            <span className="ml-1 break-all font-mono text-slate-700">{gStatus ? (typeof window !== "undefined" ? `${window.location.origin}/api/gmail/callback` : "/api/gmail/callback") : "/api/gmail/callback"}</span>
+          </p>
+
           <div className="flex items-center gap-2">
-            {cfg.google.connected ? (
-              <button onClick={disconnectGoogle} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                Disconnect
+            {gStatus?.connected ? (
+              <button onClick={disconnectGoogleReal} disabled={gBusy} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                {gBusy ? "Working…" : "Disconnect"}
               </button>
             ) : (
-              <button onClick={connectGoogle} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                <Icon name="plug" className="h-4 w-4" /> Connect Google
+              <button onClick={connectGoogleReal} disabled={gBusy} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                <Icon name="plug" className="h-4 w-4" /> {gBusy ? "Connecting…" : "Save & Connect Google"}
               </button>
             )}
           </div>

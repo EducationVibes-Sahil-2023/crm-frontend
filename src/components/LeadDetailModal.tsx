@@ -105,6 +105,8 @@ export default function LeadDetailModal({
   onDelete,
   onReassign,
   onUpdate,
+  canEdit = true,
+  canDelete = true,
 }: {
   lead: LeadLike;
   onClose: () => void;
@@ -112,6 +114,8 @@ export default function LeadDetailModal({
   onDelete: () => void;
   onReassign: (toName: string) => void;
   onUpdate?: (patch: { status?: string }) => void;
+  canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const toast = useToast();
   const me = getUser()?.name ?? "You";
@@ -211,8 +215,8 @@ export default function LeadDetailModal({
 
         {/* Footer */}
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-4">
-          {!lead.deleted && <button onClick={onDelete} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"><Icon name="trash" className="h-4 w-4" /> Delete</button>}
-          <button onClick={onEdit} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Icon name="edit" className="h-4 w-4" /> Edit Lead</button>
+          {!lead.deleted && canDelete && <button onClick={onDelete} className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-600 hover:bg-rose-50"><Icon name="trash" className="h-4 w-4" /> Delete</button>}
+          {canEdit && <button onClick={onEdit} className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"><Icon name="edit" className="h-4 w-4" /> Edit Lead</button>}
         </div>
       </div>
     </div>

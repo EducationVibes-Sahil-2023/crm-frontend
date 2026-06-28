@@ -15,6 +15,7 @@ import { STATE_NAMES, allCities, citiesOf } from "@/lib/places";
 import { logActivity } from "@/lib/activity";
 import { logLeadActivity } from "@/lib/leadExtras";
 import { loadIntakeLeads, subscribeLeads } from "@/lib/leadStore";
+import { usePermissions } from "@/components/PermissionsProvider";
 import {
   LEAD_FIELDS,
   loadCustomFields,
@@ -158,6 +159,7 @@ const PAGE_SIZES = [25, 50, 100];
 
 export default function LeadsPage() {
   const toast = useToast();
+  const { can } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<Lead[]>([]);
 
@@ -384,9 +386,11 @@ export default function LeadsPage() {
             <button onClick={() => toast.info("Export", "Preparing your leads export…")} className="flex items-center gap-2 rounded-lg bg-white/15 px-3 py-2 text-sm font-medium text-white ring-1 ring-white/25 backdrop-blur transition hover:bg-white/25">
               <Icon name="export" className="h-4 w-4" /> Export
             </button>
-            <button onClick={() => setFormOpen(true)} className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50">
-              <span className="text-base leading-none">+</span> Create Lead
-            </button>
+            {can("leads", "create") && (
+              <button onClick={() => setFormOpen(true)} className="flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50">
+                <span className="text-base leading-none">+</span> Create Lead
+              </button>
+            )}
           </div>
         </div>
 
@@ -495,6 +499,8 @@ export default function LeadsPage() {
                             onDelete={() => setConfirmDelete(l)}
                             onRestore={() => handleRestore(l)}
                             onWhatsApp={() => setWaLead(l)}
+                            canEdit={can("leads", "edit")}
+                            canDelete={can("leads", "delete")}
                           />
                         ) : (
                           renderCell(c.key, l, start + i)
@@ -572,6 +578,8 @@ export default function LeadsPage() {
           onDelete={() => setConfirmDelete(viewLead)}
           onReassign={(toName) => handleReassign(viewLead, toName)}
           onUpdate={(patch) => handleLeadPatch(viewLead, patch)}
+          canEdit={can("leads", "edit")}
+          canDelete={can("leads", "delete")}
         />
       )}
       {confirmDelete && (
@@ -610,9 +618,9 @@ function CreateLeadForm({
     phone: clean(initial?.phone),
     city: clean(initial?.city),
     state: clean(initial?.state),
-    status: initial?.status ?? statusOpts[0] ?? "New",
-    source: initial?.source ?? sourceOpts[0] ?? "Website",
-    type: initial?.type ?? (typeOpts.includes("Warm") ? "Warm" : typeOpts[0] ?? "Warm"),
+    status: initial?.status ?? statusOpts[0] ?? "",
+    source: initial?.source ?? sourceOpts[0] ?? "",
+    type: initial?.type ?? typeOpts[0] ?? "",
     referenceName: clean(initial?.referenceName),
     assignedTo: initial?.assignedTo || (getUser()?.name ?? ASSIGNEES[0] ?? ""),
   }));
@@ -871,6 +879,8 @@ function ActionButtons({
   onDelete,
   onRestore,
   onWhatsApp,
+  canEdit,
+  canDelete,
 }: {
   lead: Lead;
   onView: () => void;
@@ -878,6 +888,8 @@ function ActionButtons({
   onDelete: () => void;
   onRestore: () => void;
   onWhatsApp: () => void;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   if (lead.deleted) {
     return (
@@ -885,9 +897,11 @@ function ActionButtons({
         <button onClick={onView} title="View" aria-label="View" className="rounded-md p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" /><circle cx="12" cy="12" r="3" /></svg>
         </button>
-        <button onClick={onRestore} title="Restore" aria-label="Restore" className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50">
-          <Icon name="refresh" className="h-4 w-4" /> Restore
-        </button>
+        {canEdit && (
+          <button onClick={onRestore} title="Restore" aria-label="Restore" className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold text-emerald-600 transition hover:bg-emerald-50">
+            <Icon name="refresh" className="h-4 w-4" /> Restore
+          </button>
+        )}
       </div>
     );
   }
@@ -899,12 +913,16 @@ function ActionButtons({
       <button onClick={onWhatsApp} title="WhatsApp" aria-label="WhatsApp" className="rounded-md p-1.5 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600">
         <Icon name="whatsapp" className="h-[18px] w-[18px]" />
       </button>
-      <button onClick={onEdit} title="Edit" aria-label="Edit" className="rounded-md p-1.5 text-slate-400 transition hover:bg-amber-50 hover:text-amber-600">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
-      </button>
-      <button onClick={onDelete} title="Delete" aria-label="Delete" className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></svg>
-      </button>
+      {canEdit && (
+        <button onClick={onEdit} title="Edit" aria-label="Edit" className="rounded-md p-1.5 text-slate-400 transition hover:bg-amber-50 hover:text-amber-600">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" /></svg>
+        </button>
+      )}
+      {canDelete && (
+        <button onClick={onDelete} title="Delete" aria-label="Delete" className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></svg>
+        </button>
+      )}
     </div>
   );
 }

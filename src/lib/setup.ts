@@ -57,54 +57,19 @@ function seed(name: string, color: string): SetupOption {
   return { id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), name, color, createdBy: "System", createdAt: "—" };
 }
 
+// Lead/HR/support lookups (status, source, type, sub status, department,
+// designation, ticket category & priority) start EMPTY — there is no demo data.
+// The admin populates them from Admin Setup; until then the related dropdowns
+// are empty. Only the inventory lookups (asset category, vendor) ship defaults.
 export const DEFAULT_SETUP: SetupData = {
-  status: [
-    seed("New", "sky"),
-    seed("Contacted", "amber"),
-    seed("Qualified", "indigo"),
-    seed("Proposal", "violet"),
-    seed("Won", "emerald"),
-    seed("Lost", "rose"),
-  ],
-  source: [
-    seed("Website", "blue"),
-    seed("Referral", "emerald"),
-    seed("Social", "violet"),
-    seed("Email", "sky"),
-    seed("Cold Call", "slate"),
-  ],
-  type: [seed("Hot", "rose"), seed("Warm", "amber"), seed("Cold", "sky")],
-  subStatus: [
-    seed("Attempted", "amber"),
-    seed("Reached", "emerald"),
-    seed("Voicemail", "slate"),
-    seed("Wrong Number", "rose"),
-    seed("Not Interested", "violet"),
-  ],
-  department: [
-    seed("Counsellor", "blue"),
-  ],
-  designation: [
-    seed("Senior Counsellor", "blue"),
-    seed("Academic Counsellor", "indigo"),
-    seed("Career Counsellor", "violet"),
-    seed("Admissions Counsellor", "emerald"),
-    seed("Student Counsellor", "amber"),
-  ],
-  // Order matters for priority: later items rank higher (Urgent is top).
-  ticketPriority: [
-    seed("Low", "slate"),
-    seed("Medium", "sky"),
-    seed("High", "amber"),
-    seed("Urgent", "rose"),
-  ],
-  ticketCategory: [
-    seed("Technical", "blue"),
-    seed("Billing", "amber"),
-    seed("General", "slate"),
-    seed("Feature Request", "violet"),
-    seed("Bug", "rose"),
-  ],
+  status: [],
+  source: [],
+  type: [],
+  subStatus: [],
+  department: [],
+  designation: [],
+  ticketPriority: [],
+  ticketCategory: [],
   assetCategory: [
     seed("Laptop", "blue"),
     seed("Desktop", "indigo"),

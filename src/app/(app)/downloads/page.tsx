@@ -172,7 +172,7 @@ export default function DownloadsPage() {
       {/* App cards */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {APPS.map((app) => (
-          <AppCard key={app.id} app={app} canDownload={hasPhone} />
+          <AppCard key={app.id} app={app} />
         ))}
       </div>
 
@@ -205,16 +205,48 @@ export default function DownloadsPage() {
   );
 }
 
-function AppCard({ app, canDownload }: { app: App; canDownload: boolean }) {
+function AppCard({ app }: { app: App }) {
   const toast = useToast();
+  // Per-build availability: true = published & downloadable, false = not uploaded
+  // yet, null = still checking. Probed against /public/downloads on mount.
+  const [avail, setAvail] = useState<Record<string, boolean | null>>(
+    () => Object.fromEntries(app.builds.map((b) => [b.file, null])),
+  );
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const checks = await Promise.all(
+        app.builds.map(async (b) => {
+          try {
+            const res = await fetch(b.file, { method: "HEAD", cache: "no-store" });
+            return [b.file, res.ok] as const;
+          } catch {
+            return [b.file, false] as const;
+          }
+        }),
+      );
+      if (active) setAvail(Object.fromEntries(checks));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [app]);
 
   function download(b: Build) {
-    if (!canDownload) {
-      toast.error("Register your number", "Add your phone number above before installing.");
+    if (avail[b.file] === false) {
+      toast.info(`${b.os} build coming soon`, `The ${app.name} ${b.os} app hasn't been published yet.`);
       return;
     }
-    // Placeholder: real signed builds are served from /public/downloads/.
-    toast.info(`${app.name} · ${b.os}`, `Starting download of ${b.label} (${b.size}).`);
+    // Trigger a real file download from /public/downloads.
+    const a = document.createElement("a");
+    a.href = b.file;
+    a.download = b.file.split("/").pop() ?? "";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast.success(`Downloading ${app.name}`, `${b.label} · ${b.size}`);
   }
 
   return (
@@ -240,25 +272,34 @@ function AppCard({ app, canDownload }: { app: App; canDownload: boolean }) {
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-          {app.builds.map((b) => (
-            <button
-              key={b.os}
-              onClick={() => download(b)}
-              className="group flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-blue-300 hover:bg-blue-50/40 disabled:opacity-60"
-            >
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
-                <Icon name={b.icon} className="h-5 w-5" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-slate-800">{b.label}</p>
-                <p className="text-[11px] text-slate-400">{b.os} · {b.size} · {b.min}</p>
-              </div>
-              <Icon name="download" className="h-4 w-4 text-slate-400 transition group-hover:text-blue-600" />
-            </button>
-          ))}
+          {app.builds.map((b) => {
+            const ready = avail[b.file];
+            const comingSoon = ready === false;
+            return (
+              <button
+                key={b.os}
+                onClick={() => download(b)}
+                disabled={comingSoon}
+                title={comingSoon ? `${b.os} build not published yet` : `Download ${app.name} for ${b.os}`}
+                className="group flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-blue-300 hover:bg-blue-50/40 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-slate-200 disabled:hover:bg-transparent"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+                  <Icon name={b.icon} className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-slate-800">{b.label}</p>
+                  <p className="text-[11px] text-slate-400">
+                    {b.os} · {b.min}
+                    {comingSoon ? " · coming soon" : ` · ${b.size}`}
+                  </p>
+                </div>
+                <Icon name={comingSoon ? "clock" : "download"} className="h-4 w-4 text-slate-400 transition group-hover:text-blue-600" />
+              </button>
+            );
+          })}
         </div>
 
-        <p className="mt-3 text-center text-[11px] text-slate-400">Version {APP_VERSION} · scan or open this page on your phone to install</p>
+        <p className="mt-3 text-center text-[11px] text-slate-400">Version {APP_VERSION} · open this page on your phone, then tap Download to install</p>
       </div>
     </div>
   );

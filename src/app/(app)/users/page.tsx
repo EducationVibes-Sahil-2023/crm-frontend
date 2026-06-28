@@ -12,6 +12,7 @@ import { directoryApi, type DirectoryEntry } from "@/lib/directoryApi";
 import { smtpApi } from "@/lib/smtpApi";
 import { getUser } from "@/lib/auth";
 import { DEFAULT_ROLES, TOTAL_PERMS, countGranted, emptyMatrix, loadRoles, roleNames, type Perm } from "@/lib/roles";
+import { usePermissions } from "@/components/PermissionsProvider";
 import UserForm, { type UserDraft } from "@/components/UserForm";
 
 type User = {
@@ -181,6 +182,7 @@ const DEFAULT_FILTERS: Filters = {
 
 export default function UsersPage() {
   const toast = useToast();
+  const { can } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]);
 
@@ -294,7 +296,15 @@ export default function UsersPage() {
       setSendingTo(null);
     }
   }
-  const rowHandlers = { onView: openEdit, onEdit: openEdit, onDelete: removeUser, onSend: sendCredentials, sendingTo };
+  const rowHandlers = {
+    onView: openEdit,
+    onEdit: openEdit,
+    onDelete: removeUser,
+    onSend: sendCredentials,
+    sendingTo,
+    canEdit: can("users", "edit"),
+    canDelete: can("users", "delete"),
+  };
 
   // Designation / Department / Role master lists are managed in Admin Setup.
   const [designationOptions, setDesignationOptions] = useState<string[]>(["All Designations"]);
@@ -423,9 +433,11 @@ export default function UsersPage() {
           <button onClick={() => toast.info("Export", "Preparing your users export…")} className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
             <Icon name="export" className="h-4 w-4 text-slate-500" /> Export
           </button>
-          <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-            <span className="text-base leading-none">+</span> Add User
-          </button>
+          {can("users", "create") && (
+            <button onClick={openCreate} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+              <span className="text-base leading-none">+</span> Add User
+            </button>
+          )}
         </div>
       </div>
 
@@ -563,7 +575,7 @@ export default function UsersPage() {
             ) : (
               <>
                 {cardsShown.map((u, i) => (
-                  <UserCard key={u.email} user={u} idx={i} roleMeta={roleMeta} onView={openEdit} onEdit={openEdit} onSend={sendCredentials} sending={sendingTo === u.email} />
+                  <UserCard key={u.email} user={u} idx={i} roleMeta={roleMeta} onView={openEdit} onEdit={openEdit} onSend={sendCredentials} sending={sendingTo === u.email} canEdit={can("users", "edit")} />
                 ))}
                 {/* Infinite-scroll loaders */}
                 {hasMore && Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={`more-${i}`} />)}
@@ -611,6 +623,8 @@ type RowHandlers = {
   onDelete: (u: User) => void;
   onSend: (u: User) => void;
   sendingTo: string | null;
+  canEdit: boolean;
+  canDelete: boolean;
 };
 
 function userToDraft(u: User): UserDraft {
@@ -698,35 +712,41 @@ function ActionButtons({ user, on }: { user: User; on?: RowHandlers }) {
       >
         <Icon name="eye" className="h-[18px] w-[18px]" />
       </button>
-      <button
-        onClick={() => on?.onSend(user)}
-        disabled={sending}
-        title="Email credentials to user"
-        aria-label="Send credentials"
-        className="rounded-md p-1.5 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50"
-      >
-        {sending ? (
-          <span className="block h-[18px] w-[18px] animate-spin rounded-full border-2 border-slate-300 border-t-emerald-600" />
-        ) : (
-          <Icon name="send" className="h-[18px] w-[18px]" />
-        )}
-      </button>
-      <button
-        onClick={() => on?.onEdit(user)}
-        title="Edit"
-        aria-label="Edit"
-        className="rounded-md p-1.5 text-slate-400 transition hover:bg-amber-50 hover:text-amber-600"
-      >
-        <Icon name="edit" className="h-[18px] w-[18px]" />
-      </button>
-      <button
-        onClick={() => on?.onDelete(user)}
-        title="Delete"
-        aria-label="Delete"
-        className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-      >
-        <Icon name="trash" className="h-[18px] w-[18px]" />
-      </button>
+      {on?.canEdit && (
+        <button
+          onClick={() => on?.onSend(user)}
+          disabled={sending}
+          title="Email credentials to user"
+          aria-label="Send credentials"
+          className="rounded-md p-1.5 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50"
+        >
+          {sending ? (
+            <span className="block h-[18px] w-[18px] animate-spin rounded-full border-2 border-slate-300 border-t-emerald-600" />
+          ) : (
+            <Icon name="send" className="h-[18px] w-[18px]" />
+          )}
+        </button>
+      )}
+      {on?.canEdit && (
+        <button
+          onClick={() => on?.onEdit(user)}
+          title="Edit"
+          aria-label="Edit"
+          className="rounded-md p-1.5 text-slate-400 transition hover:bg-amber-50 hover:text-amber-600"
+        >
+          <Icon name="edit" className="h-[18px] w-[18px]" />
+        </button>
+      )}
+      {on?.canDelete && (
+        <button
+          onClick={() => on?.onDelete(user)}
+          title="Delete"
+          aria-label="Delete"
+          className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+        >
+          <Icon name="trash" className="h-[18px] w-[18px]" />
+        </button>
+      )}
     </div>
   );
 }
@@ -772,6 +792,7 @@ function UserCard({
   onEdit,
   onSend,
   sending,
+  canEdit,
 }: {
   user: User;
   idx: number;
@@ -780,6 +801,7 @@ function UserCard({
   onEdit: (u: User) => void;
   onSend: (u: User) => void;
   sending: boolean;
+  canEdit: boolean;
 }) {
   const rm = roleMeta[user.role];
   const active = user.status === "Active";
@@ -790,12 +812,16 @@ function UserCard({
         <button onClick={() => onView(user)} title="View profile" aria-label="View profile" className="rounded-md bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur transition hover:bg-blue-50 hover:text-blue-600">
           <Icon name="eye" className="h-3.5 w-3.5" />
         </button>
-        <button onClick={() => onEdit(user)} title="Edit" aria-label="Edit" className="rounded-md bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur transition hover:bg-amber-50 hover:text-amber-600">
-          <Icon name="edit" className="h-3.5 w-3.5" />
-        </button>
-        <button onClick={() => onSend(user)} disabled={sending} title="Email credentials to user" aria-label="Send credentials" className="rounded-md bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur transition hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50">
-          {sending ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-emerald-600" /> : <Icon name="send" className="h-3.5 w-3.5" />}
-        </button>
+        {canEdit && (
+          <button onClick={() => onEdit(user)} title="Edit" aria-label="Edit" className="rounded-md bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur transition hover:bg-amber-50 hover:text-amber-600">
+            <Icon name="edit" className="h-3.5 w-3.5" />
+          </button>
+        )}
+        {canEdit && (
+          <button onClick={() => onSend(user)} disabled={sending} title="Email credentials to user" aria-label="Send credentials" className="rounded-md bg-white/90 p-1.5 text-slate-500 shadow-sm ring-1 ring-slate-200 backdrop-blur transition hover:bg-emerald-50 hover:text-emerald-600 disabled:opacity-50">
+            {sending ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-300 border-t-emerald-600" /> : <Icon name="send" className="h-3.5 w-3.5" />}
+          </button>
+        )}
       </div>
 
       {/* Lanyard slot */}

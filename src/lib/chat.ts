@@ -141,6 +141,52 @@ const SEED_MESSAGES: Message[] = [
   { id: "m51", conversationId: "conv6", senderId: "me", text: "Great, I've added it to the calendar 📅", createdAt: iso(215), status: "read" },
 ];
 
+// ---- real team members → chat contacts ----
+
+const AVATAR_GRADIENTS = [
+  "from-blue-500 to-indigo-600",
+  "from-rose-500 to-pink-600",
+  "from-violet-500 to-purple-600",
+  "from-emerald-500 to-teal-600",
+  "from-amber-500 to-orange-600",
+  "from-cyan-500 to-sky-600",
+];
+
+type TeamLike = { id: number; name: string; role?: string; designation?: string | null; department?: string | null };
+
+/** Stable contact id for a login account. */
+export function contactIdFor(userId: number): string {
+  return `u${userId}`;
+}
+
+/** Map a real login account to a chat Contact. */
+export function contactFromMember(m: TeamLike, idx = 0): Contact {
+  return {
+    id: contactIdFor(m.id),
+    name: m.name,
+    role: m.designation || m.role || m.department || "Team member",
+    avatarColor: AVATAR_GRADIENTS[idx % AVATAR_GRADIENTS.length],
+    presence: "online",
+  };
+}
+
+/**
+ * Merge real team members into the conversation list so every colleague is
+ * shown and chattable. Existing conversations (with their messages, pins, unread
+ * counts) are preserved; only missing people are appended as empty chats.
+ */
+export function mergeTeamConversations(existing: Conversation[], members: TeamLike[]): Conversation[] {
+  const have = new Set(existing.map((c) => c.contact.id));
+  const additions: Conversation[] = [];
+  members.forEach((m, i) => {
+    const contact = contactFromMember(m, i);
+    if (!have.has(contact.id)) {
+      additions.push({ id: `conv-${contact.id}`, contact, pinned: false, muted: false, unread: 0 });
+    }
+  });
+  return [...existing, ...additions];
+}
+
 export function loadConversations(): Conversation[] {
   if (typeof window === "undefined") return SEED_CONVERSATIONS;
   try {

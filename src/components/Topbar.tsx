@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Icon, type IconName } from "@/components/icons";
@@ -40,7 +40,7 @@ function timeAgo(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-export default function Topbar({
+function Topbar({
   onMenu,
   onToggleCollapse,
 }: {
@@ -349,3 +349,7 @@ function Avatar({ name, avatar }: { name: string; avatar: string | null }) {
     </div>
   );
 }
+
+// Memoised: the navbar has no route dependency, so with stable callbacks from
+// the layout it does NOT re-render when you navigate — only the content does.
+export default memo(Topbar);

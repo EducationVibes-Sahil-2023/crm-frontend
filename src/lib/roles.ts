@@ -1,4 +1,12 @@
 // Roles & Permissions — managed in Admin Setup, mapped onto each user profile.
+//
+// Role definitions are stored in the backend (the `app_store` table via dbStore),
+// so they are shared across every device and every login in the workspace — a
+// user signing in on any machine gets the permissions their admin defined. The
+// store is hydrated once at sign-in (see AuthGuard), so the synchronous
+// loadRoles() reads below hit the in-memory cache.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export const MODULES: { key: string; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -24,68 +32,10 @@ export type Role = {
   permissions: Record<string, Perm>; // moduleKey -> perm
 };
 
-function perm(view: boolean, create: boolean, edit: boolean, del: boolean): Perm {
-  return { view, create, edit, delete: del };
-}
-const NONE = () => perm(false, false, false, false);
-const VIEW = () => perm(true, false, false, false);
-const FULL = () => perm(true, true, true, true);
-const WRITE = () => perm(true, true, true, false);
-
-function build(maker: (key: string) => Perm): Record<string, Perm> {
-  return Object.fromEntries(MODULES.map((m) => [m.key, maker(m.key)]));
-}
-
-export const DEFAULT_ROLES: Role[] = [
-  {
-    id: "administrator",
-    name: "Administrator",
-    color: "rose",
-    description: "Full access to every module and all settings.",
-    system: true,
-    permissions: build(() => FULL()),
-  },
-  {
-    id: "manager",
-    name: "Manager",
-    color: "violet",
-    description: "Manage records across modules, without admin configuration.",
-    permissions: build((k) => (k === "adminSetup" ? VIEW() : k === "users" ? WRITE() : FULL())),
-  },
-  {
-    id: "sales-rep",
-    name: "Sales Rep",
-    color: "blue",
-    description: "Work leads and tasks; read-only elsewhere.",
-    permissions: build((k) =>
-      k === "leads" || k === "tasks"
-        ? WRITE()
-        : k === "adminSetup" || k === "users"
-          ? NONE()
-          : VIEW(),
-    ),
-  },
-  {
-    id: "support-agent",
-    name: "Support Agent",
-    color: "amber",
-    description: "Handle operations and communication queues.",
-    permissions: build((k) =>
-      k === "operations" || k === "communication"
-        ? WRITE()
-        : k === "adminSetup" || k === "users"
-          ? NONE()
-          : VIEW(),
-    ),
-  },
-  {
-    id: "viewer",
-    name: "Viewer",
-    color: "slate",
-    description: "Read-only access to operational modules.",
-    permissions: build((k) => (k === "adminSetup" || k === "users" ? NONE() : VIEW())),
-  },
-];
+// Roles & permissions start EMPTY — there is no demo data. The admin defines
+// roles from Admin Setup → Roles & Permissions. (Module access in the app is
+// gated by the workspace plan, not these roles, so an empty list is safe.)
+export const DEFAULT_ROLES: Role[] = [];
 
 const STORAGE_KEY = "admin_roles_v1";
 
@@ -117,9 +67,7 @@ function cloneDefaults(): Role[] {
 export function loadRoles(): Role[] {
   if (typeof window === "undefined") return cloneDefaults();
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return cloneDefaults();
-    const parsed = JSON.parse(raw) as Role[];
+    const parsed = dbGet<Role[]>(STORAGE_KEY, []);
     if (!Array.isArray(parsed) || parsed.length === 0) return cloneDefaults();
     return parsed.map((r) => normalize(r));
   } catch {
@@ -129,7 +77,7 @@ export function loadRoles(): Role[] {
 
 export function saveRoles(roles: Role[]): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(roles));
+  dbSet(STORAGE_KEY, roles);
 }
 
 export function roleNames(): string[] {

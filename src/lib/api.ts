@@ -1,6 +1,6 @@
 import { getToken } from "@/lib/auth";
 
-const API_BASE_URL =
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
 export type Task = {
@@ -10,6 +10,10 @@ export type Task = {
   created_at: string;
   updated_at: string;
 };
+
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  return request<T>(path, init);
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers({ "Content-Type": "application/json", ...(init?.headers as Record<string, string>) });

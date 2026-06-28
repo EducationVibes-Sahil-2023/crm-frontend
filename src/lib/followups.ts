@@ -1,6 +1,9 @@
 // Follow-up tracker — standalone reminders/follow-ups with due-date buckets.
-// localStorage-backed. The tracker page also merges in existing per-lead
-// reminders from leadExtras so nothing slips through the cracks.
+// Database-backed via dbStore (the `app_store` table) — shared across devices
+// and isolated per workspace, NOT browser localStorage. The tracker page also
+// merges in existing per-lead reminders from leadExtras so nothing slips through.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type FollowUpPriority = "low" | "medium" | "high";
 export type FollowUpStatus = "pending" | "done";
@@ -82,43 +85,16 @@ export function relativeDue(due: string): string {
 // ---- store -------------------------------------------------------------
 
 const KEY = "followups_v1";
-function todayAt(offsetDays: number, hhmm: string): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}T${hhmm}`;
-}
 
-let SEED: FollowUp[] | null = null;
-function seed(): FollowUp[] {
-  if (SEED) return SEED;
-  SEED = [
-    { id: "fu-1", title: "Call back about MBA program", contact: "Aarav Sharma", phone: "+91 98765 43210", due: todayAt(-2, "11:00"), priority: "high", category: "Call", status: "pending", notes: "Interested in weekend batch.", createdBy: "System", createdAt: "" },
-    { id: "fu-2", title: "Send fee structure on WhatsApp", contact: "Diya Patel", phone: "+91 91234 56780", due: todayAt(0, "16:30"), priority: "high", category: "WhatsApp", status: "pending", notes: "", createdBy: "System", createdAt: "" },
-    { id: "fu-3", title: "Counselling session", contact: "Vivaan Reddy", phone: "+91 99887 76655", due: todayAt(1, "10:00"), priority: "medium", category: "Meeting", status: "pending", notes: "Bring brochure.", createdBy: "System", createdAt: "" },
-    { id: "fu-4", title: "Follow up on document submission", contact: "Ananya Nair", phone: "", due: todayAt(4, "12:00"), priority: "medium", category: "Email", status: "pending", notes: "", createdBy: "System", createdAt: "" },
-    { id: "fu-5", title: "Quarterly check-in", contact: "Kabir Khanna", phone: "", due: todayAt(15, "15:00"), priority: "low", category: "Call", status: "pending", notes: "", createdBy: "System", createdAt: "" },
-  ];
-  return SEED;
-}
-
+/** Read follow-ups from the hydrated database store (empty until the user adds any). */
 export function loadFollowUps(): FollowUp[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return seed();
-    const parsed = JSON.parse(raw) as FollowUp[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const list = dbGet<FollowUp[]>(KEY, []);
+  return Array.isArray(list) ? list : [];
 }
+
+/** Persist follow-ups to the database (write-through, debounced). */
 export function saveFollowUps(list: FollowUp[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore quota */
-  }
+  dbSet(KEY, list);
 }
 
 export function snooze(due: string, days: number): string {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { getUser } from "@/lib/auth";
+import { isStoreReady, STORE_EVENT } from "@/lib/dbStore";
 import { allReminders, deleteReminder, toggleReminder, type LeadReminder } from "@/lib/leadExtras";
 import {
   AGING, COMPLETION_SPLIT, COUNSELLORS, CREATED_LEAST, DEPARTMENTS, FU_KPIS, GHOSTED,
@@ -33,9 +34,22 @@ export default function FollowUpsPage() {
   const [editing, setEditing] = useState<FollowUp | null>(null);
   const [open, setOpen] = useState(false);
 
+  // Load once the database store has hydrated (so we read real saved rows, not
+  // an empty cache). One-shot: we stop listening after the first load so the
+  // save-on-change effect below can't ping-pong with store change events.
   useEffect(() => {
-    const t = setTimeout(() => { setFollowups(loadFollowUps()); setReminders(allReminders()); setReady(true); }, 0);
-    return () => clearTimeout(t);
+    let loaded = false;
+    const load = () => {
+      if (loaded || !isStoreReady()) return;
+      loaded = true;
+      setFollowups(loadFollowUps());
+      setReminders(allReminders());
+      setReady(true);
+      window.removeEventListener(STORE_EVENT, load);
+    };
+    load();
+    if (!loaded) window.addEventListener(STORE_EVENT, load);
+    return () => window.removeEventListener(STORE_EVENT, load);
   }, []);
   useEffect(() => { if (ready) saveFollowUps(followups); }, [followups, ready]);
 

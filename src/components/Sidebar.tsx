@@ -8,6 +8,10 @@ import { Icon, type IconName } from "@/components/icons";
 import { useBranding, initials } from "@/lib/branding";
 import { usePlatform } from "@/lib/platform";
 import { allowedFeatures, isHrefAllowed, ALL_FEATURE_KEYS } from "@/lib/access";
+import { isSuperAdmin } from "@/lib/superAdmin";
+import { hrefModule } from "@/lib/permissions";
+import { usePermissions } from "@/components/PermissionsProvider";
+import { STORE_EVENT } from "@/lib/dbStore";
 
 type SetupNavItem = { label: string; href: string; icon: IconName };
 const SETUP_GROUPS: { heading: string; items: SetupNavItem[] }[] = [
@@ -76,12 +80,31 @@ export default function Sidebar({
   const inSetup = pathname.startsWith("/admin-setup");
   const branding = useBranding();
   const logoBg = usePlatform().brand.logoBg;
+  // Role-based visibility: hide nav items whose module the user can't `view`.
+  const { can } = usePermissions();
+  const canViewHref = (href: string) => {
+    const moduleKey = hrefModule(href);
+    return moduleKey === null || can(moduleKey, "view");
+  };
   // Modules the current subscription plan unlocks (Super Admin → Platform
   // Settings → Permissions). Starts open to avoid an SSR/first-paint flash.
   const [allowed, setAllowed] = useState<Set<string>>(() => new Set(ALL_FEATURE_KEYS));
+  // The Platform / Super Admin menu is for the platform owner only — hidden from
+  // client (tenant) logins. Defaults to false so it never flashes for clients;
+  // revealed after hydration if a super-admin session exists.
+  const [isSuper, setIsSuper] = useState(false);
+  // Compute once on mount and only re-sync when the workspace settings actually
+  // change (plan/permissions are saved). NOT on every navigation — recomputing
+  // here per click made the whole menu re-render needlessly on each page change.
   useEffect(() => {
-    setAllowed(allowedFeatures());
-  }, [pathname]);
+    const sync = () => {
+      setAllowed(allowedFeatures());
+      setIsSuper(isSuperAdmin());
+    };
+    sync();
+    window.addEventListener(STORE_EVENT, sync);
+    return () => window.removeEventListener(STORE_EVENT, sync);
+  }, []);
 
   function NavLink({
     href,
@@ -191,7 +214,24 @@ export default function Sidebar({
       ) : (
         <nav className="no-scrollbar flex-1 overflow-y-auto px-3 pb-4">
           {NAV_GROUPS.map((group, gi) => {
-            const items = group.items.filter((item) => isHrefAllowed(item.href, allowed));
+            const items = group.items
+              .filter(
+                (item) =>
+                  isHrefAllowed(item.href, allowed) &&
+                  // Super Admin (Platform) menu only for the platform owner.
+                  // Match "/admin" exactly or "/admin/…" — NOT "/admin-setup".
+                  (isSuper || !(item.href === "/admin" || item.href.startsWith("/admin/"))) &&
+                  // Role permissions: the user must be able to view the item's
+                  // module (or one of its sub-pages).
+                  (canViewHref(item.href) || (item.children ?? []).some((c) => canViewHref(c.href))),
+              )
+              // Drop sub-pages the user's role can't view, so dropdowns only
+              // show what they're allowed to open.
+              .map((item) =>
+                item.children?.length
+                  ? { ...item, children: item.children.filter((c) => canViewHref(c.href)) }
+                  : item,
+              );
             if (items.length === 0) return null;
             return (
             <div key={gi} className="mt-4 first:mt-2">

@@ -15,10 +15,10 @@ const config: CapacitorConfig = {
   },
   // The app loads your live Next.js site in the native shell. Set this to your
   // deployed HTTPS URL for production, or your PC's LAN IP for on-device dev:
-  //   production:  https://app.educationvibes.in
+  //   production:  https://crm.educationvibes.co.in
   //   LAN dev:     http://192.168.1.54:3000   (also set cleartext: true)
   server: {
-    url: "https://app.educationvibes.in",
+    url: "https://crm.educationvibes.co.in",
     // cleartext: true, // enable only for http:// LAN dev URLs
   },
 };

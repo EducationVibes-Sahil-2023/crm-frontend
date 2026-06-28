@@ -85,13 +85,8 @@ export function initials(name: string): string {
 // ── Lead directory used for matching ───────────────────────────────
 // Representative CRM leads (each with a primary + alternative number). Captured
 // intake leads are merged in so real leads match too.
-const SEED_CONTACTS: LeadContact[] = [
-  { id: "lc1", name: "Aarav Sharma", company: "Infosys", primary: "+91 98765 43210", alternative: "+91 90011 22334" },
-  { id: "lc2", name: "Diya Patel", company: "TCS", primary: "+91 99000 11223", alternative: "+91 81234 56789" },
-  { id: "lc3", name: "Vivaan Reddy", company: "Wipro", primary: "+91 98111 22333", alternative: "" },
-  { id: "lc4", name: "Ananya Nair", company: "Zoho", primary: "+91 97777 88899", alternative: "+91 73456 12390" },
-  { id: "lc5", name: "Kabir Mehta", company: "Acme Corp", primary: "+91 90909 80808", alternative: "+91 91234 00000" },
-];
+// No demo contacts — the directory is built only from real captured leads.
+const SEED_CONTACTS: LeadContact[] = [];
 
 export function leadContacts(): LeadContact[] {
   const intake = loadIntakeLeads()
@@ -132,10 +127,6 @@ const CALLS_KEY = "nexus_calls";
 const INSTALL_KEY = "nexus_call_install_at";
 const SYNC_KEY = "nexus_call_last_sync";
 
-function iso(minsAgo: number): string {
-  return new Date(Date.now() - minsAgo * 60000).toISOString();
-}
-
 // Installation time — set once, the moment tracking begins.
 export function getInstallTime(): string {
   if (typeof window === "undefined") return new Date().toISOString();
@@ -156,30 +147,13 @@ function setLastSync(): void {
   if (typeof window !== "undefined") window.localStorage.setItem(SYNC_KEY, new Date().toISOString());
 }
 
-function seedCalls(device: string): Call[] {
-  return [
-    { id: "call-1", number: "+91 98765 43210", rawName: "Aarav S", direction: "outgoing", at: iso(40), durationSec: 215, device },
-    { id: "call-2", number: "9001122334", rawName: "", direction: "incoming", at: iso(95), durationSec: 64, device }, // Aarav alt
-    { id: "call-3", number: "+91 99000 11223", rawName: "Diya", direction: "missed", at: iso(160), durationSec: 0, device },
-    { id: "call-4", number: "081234 56789", rawName: "", direction: "incoming", at: iso(220), durationSec: 410, device }, // Diya alt
-    { id: "call-5", number: "+91 98111 22333", rawName: "Vivaan", direction: "outgoing", at: iso(300), durationSec: 132, device },
-    { id: "call-6", number: "+91 90909 80808", rawName: "Kabir", direction: "outgoing", at: iso(620), durationSec: 78, device },
-    { id: "call-7", number: "+91 91234 00000", rawName: "", direction: "missed", at: iso(700), durationSec: 0, device }, // Kabir alt
-    // Unmatched (not a CRM lead) — these are ignored by the tracker.
-    { id: "call-8", number: "+91 88888 77777", rawName: "Pizza", direction: "incoming", at: iso(130), durationSec: 33, device },
-    { id: "call-9", number: "+91 70000 00001", rawName: "Unknown", direction: "missed", at: iso(500), durationSec: 0, device },
-  ];
-}
-
 export function loadCalls(device: string): Call[] {
   if (typeof window === "undefined") return [];
+  void device; // device retained for signature compatibility; no demo seeding
   try {
     const raw = window.localStorage.getItem(CALLS_KEY);
-    if (!raw) {
-      const seeded = seedCalls(device);
-      window.localStorage.setItem(CALLS_KEY, JSON.stringify(seeded));
-      return seeded;
-    }
+    // No demo seeding — real calls arrive from the device bridge / user actions.
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as Call[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {

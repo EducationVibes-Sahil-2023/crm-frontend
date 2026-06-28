@@ -215,7 +215,7 @@ async function runTool(name: string, input: Record<string, unknown>): Promise<st
 
 // ---------- the relay call + agentic loop ----------
 
-async function callProxy(messages: ApiMessage[]): Promise<AssistantReply> {
+async function callProxy(messages: ApiMessage[], systemExtra?: string): Promise<AssistantReply> {
   const token = getToken();
   const res = await fetch(`${API_BASE_URL}/ai/chat`, {
     method: "POST",
@@ -224,7 +224,7 @@ async function callProxy(messages: ApiMessage[]): Promise<AssistantReply> {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({
-      system: SYSTEM_PROMPT,
+      system: systemExtra ? `${SYSTEM_PROMPT}\n\n${systemExtra}` : SYSTEM_PROMPT,
       tools: AI_TOOLS,
       thinking: { type: "adaptive" },
       max_tokens: 4096,
@@ -256,11 +256,12 @@ function textOf(content: ContentBlock[]): string {
 export async function ask(
   history: ApiMessage[],
   onTool?: (e: ToolEvent) => void,
+  systemExtra?: string,
 ): Promise<{ messages: ApiMessage[]; text: string }> {
   const convo = [...history];
 
   for (let step = 0; step < 6; step++) {
-    const reply = await callProxy(convo);
+    const reply = await callProxy(convo, systemExtra);
     convo.push({ role: "assistant", content: reply.content });
 
     const toolUses = (reply.content || []).filter(
