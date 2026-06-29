@@ -2,19 +2,20 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
+import SearchableSelect from "@/components/SearchableSelect";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import VisitorRequestForm from "@/components/VisitorRequestForm";
 import { getUser } from "@/lib/auth";
 import { formatVisitDate, loadVisitorRequests, saveVisitorRequests, type VisitorRequest, type VisitorStatus } from "@/lib/leadExtras";
 
-const STATUS_STYLE: Record<VisitorStatus, string> = {
-  Pending: "bg-amber-100 text-amber-700",
-  Approved: "bg-sky-100 text-sky-700",
-  Completed: "bg-emerald-100 text-emerald-700",
-  Cancelled: "bg-rose-100 text-rose-700",
-};
 const ALL_STATUSES: VisitorStatus[] = ["Pending", "Approved", "Completed", "Cancelled"];
+const STATUS_DOT: Record<VisitorStatus, string> = {
+  Pending: "bg-amber-500",
+  Approved: "bg-sky-500",
+  Completed: "bg-emerald-500",
+  Cancelled: "bg-rose-500",
+};
 
 export default function LeadVisitorPage() {
   const toast = useToast();
@@ -112,17 +113,13 @@ export default function LeadVisitorPage() {
 
 function StatusSelect({ value, onChange }: { value: VisitorStatus; onChange: (s: VisitorStatus) => void }) {
   return (
-    <div className="relative inline-flex items-center">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as VisitorStatus)}
-        className={`cursor-pointer appearance-none rounded-full border-0 py-1 pl-2.5 pr-7 text-xs font-semibold outline-none ring-1 ring-inset ring-transparent focus:ring-2 focus:ring-blue-500/40 ${STATUS_STYLE[value]}`}
-        title="Change status"
-      >
-        {ALL_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <Icon name="chevronDown" className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-60" />
-    </div>
+    <SearchableSelect
+      value={value}
+      onChange={(v) => onChange(v as VisitorStatus)}
+      options={ALL_STATUSES.map((s) => ({ value: s, label: s, dotClass: STATUS_DOT[s] }))}
+      className="w-36"
+      buttonClassName="py-1 text-xs font-semibold"
+    />
   );
 }
 

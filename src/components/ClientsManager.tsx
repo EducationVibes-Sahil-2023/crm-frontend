@@ -7,6 +7,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import ClientForm from "@/components/ClientForm";
 import WelcomeCredentials from "@/components/WelcomeCredentials";
+import SearchSelect from "@/components/SearchSelect";
 import { PLAN_PRICE, PLAN_STYLE, STATUS_STYLE, dbNameFor, fmtMoney, genPassword, mrr, type Tenant, type TenantStatus } from "@/lib/tenants";
 import { provisionTenant, dropTenant, impersonateTenant, listTenants, updateTenant, resetTenantPassword, serverClientToTenant } from "@/lib/tenantsApi";
 import { setImpersonatedSession } from "@/lib/auth";
@@ -206,7 +207,7 @@ export default function ClientsManager() {
           <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search company, subdomain, db, email…" className="w-full rounded-xl border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm shadow-sm outline-none focus:border-blue-500" />
         </div>
-        <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:border-blue-500">{["All", "Active", "Trial", "Suspended"].map((o) => <option key={o}>{o}</option>)}</select>
+        <div className="w-40"><SearchSelect value={statusF} onChange={setStatusF} options={["All", "Active", "Trial", "Suspended"]} searchable={false} /></div>
         <div className="ml-auto flex items-center rounded-xl border border-slate-300 bg-white p-1 shadow-sm">
           <button onClick={() => setView2("cards")} title="Card view" className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${view2 === "cards" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}><Icon name="grid" className="h-4 w-4" /> Cards</button>
           <button onClick={() => setView2("table")} title="Table view" className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${view2 === "table" ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-900"}`}><Icon name="list" className="h-4 w-4" /> Table</button>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchSelect from "@/components/SearchSelect";
 import { logActivity } from "@/lib/activity";
 import { getUser, isAdmin, setup2fa, enable2fa, disable2fa } from "@/lib/auth";
 import { accountsApi, qrUrl, ROLE_OPTIONS, type Account, type AccountInput } from "@/lib/accountUsers";
@@ -409,9 +410,7 @@ function AccountModal({
           </div>
           <div>
             <label className="mb-1 block text-sm font-semibold text-slate-700">Role</label>
-            <select value={form.role} onChange={(e) => set("role", e.target.value)} className={field}>
-              {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+            <SearchSelect value={form.role ?? ""} onChange={(v) => set("role", v)} options={[...ROLE_OPTIONS]} />
           </div>
           <div>
             <label className="mb-1 block text-sm font-semibold text-slate-700">{isEdit ? "New password" : "Password"}</label>

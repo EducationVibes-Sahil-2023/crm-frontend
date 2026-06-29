@@ -5,6 +5,7 @@ import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { getUser } from "@/lib/auth";
 import { Field, HrEmpty, HrFooter, HrHero, HrModal, inputCls } from "@/components/HrUi";
+import SearchSelect from "@/components/SearchSelect";
 import { ENGAGEMENT_TYPES, loadEngagement, saveEngagement, type Engagement } from "@/lib/hr";
 
 const TYPE_STYLE: Record<string, string> = {
@@ -89,7 +90,7 @@ function EventModal({ onClose, onSave }: { onClose: () => void; onSave: (e: Omit
       <form onSubmit={submit}>
         <div className="space-y-4 px-6 py-6">
           <Field label="Title"><input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Quarterly Town Hall" className={inputCls} /></Field>
-          <Field label="Type"><select value={type} onChange={(e) => setType(e.target.value)} className={inputCls}>{ENGAGEMENT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
+          <Field label="Type"><SearchSelect value={type} onChange={setType} options={ENGAGEMENT_TYPES} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date"><input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={inputCls} /></Field>
             <Field label="Location"><input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Venue / link" className={inputCls} /></Field>

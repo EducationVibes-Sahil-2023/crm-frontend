@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchSelect from "@/components/SearchSelect";
 import { Field, HrEmpty, HrFooter, HrHero, HrModal, inputCls } from "@/components/HrUi";
 import { AWARD_CATEGORIES, listEmployees, loadAwards, saveAwards, type Award } from "@/lib/hr";
 
@@ -79,9 +80,9 @@ function AwardModal({ employees, onClose, onSave }: { employees: string[]; onClo
     <HrModal title="Give Award" onClose={onClose}>
       <form onSubmit={submit}>
         <div className="space-y-4 px-6 py-6">
-          <Field label="Employee"><select value={employee} onChange={(e) => setEmployee(e.target.value)} className={inputCls}>{employees.map((n) => <option key={n}>{n}</option>)}</select></Field>
+          <Field label="Employee"><SearchSelect value={employee} onChange={setEmployee} options={employees} /></Field>
           <Field label="Award title"><input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Counsellor of the Month" className={inputCls} /></Field>
-          <Field label="Category"><select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>{AWARD_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+          <Field label="Category"><SearchSelect value={category} onChange={setCategory} options={[...AWARD_CATEGORIES]} /></Field>
           <Field label="Note"><textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} className={`${inputCls} resize-none`} placeholder="Why are they being recognised?" /></Field>
         </div>
         <HrFooter onClose={onClose} submitLabel="Give Award" />

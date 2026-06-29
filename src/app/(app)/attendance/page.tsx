@@ -8,6 +8,8 @@ import { listEmployees, loadARs, loadPunches, nowTime, saveARs, savePunches, tod
 import { defaultShift, evaluatePunch, format12, hoursLabel, type Shift } from "@/lib/shifts";
 import { getPosition, loadWorkTypes, nearestLocation, type WorkType } from "@/lib/locations";
 import { colorBadge } from "@/lib/setup";
+import SearchSelect from "@/components/SearchSelect";
+import MobileAttendance from "@/components/mobile/MobileAttendance";
 
 const AR_STATUS_STYLE: Record<string, string> = {
   Pending: "bg-amber-100 text-amber-700",
@@ -174,7 +176,12 @@ export default function AttendancePage() {
   const ringColor = done ? "#10b981" : todayPunch.status === "Late" ? "#f59e0b" : checkedIn ? "#3b82f6" : "#cbd5e1";
 
   return (
-    <div className="space-y-6">
+    <>
+    {/* Phones: focused punch experience. Desktop keeps the full dashboard. */}
+    <div className="lg:hidden">
+      <MobileAttendance />
+    </div>
+    <div className="hidden space-y-6 lg:block">
       {/* Hero with live clock */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white shadow-sm sm:p-7">
         <div className="absolute inset-0 opacity-20 [background:radial-gradient(circle_at_15%_20%,white,transparent_45%),radial-gradient(circle_at_85%_90%,white,transparent_40%)]" />
@@ -380,6 +387,7 @@ export default function AttendancePage() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -444,7 +452,7 @@ function ApplyARModal({ today, workTypes, onClose, onSubmit }: {
             <div><label className="mb-1.5 block text-xs font-medium text-slate-500">Check in</label><input type="time" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className={cls} /></div>
             <div><label className="mb-1.5 block text-xs font-medium text-slate-500">Check out</label><input type="time" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className={cls} /></div>
           </div>
-          <div><label className="mb-1.5 block text-xs font-medium text-slate-500">Work mode</label><select value={workType} onChange={(e) => setWorkType(e.target.value)} className={cls}>{(workTypes.length ? workTypes.map((w) => w.name) : ["Work From Office"]).map((n) => <option key={n}>{n}</option>)}</select></div>
+          <div><label className="mb-1.5 block text-xs font-medium text-slate-500">Work mode</label><SearchSelect value={workType} onChange={setWorkType} options={workTypes.length ? workTypes.map((w) => w.name) : ["Work From Office"]} placeholder="Select work mode" /></div>
           <div><label className="mb-1.5 block text-xs font-medium text-slate-500">Reason <span className="text-rose-500">*</span></label><textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} placeholder="e.g. Biometric failed / was on field visit / forgot to punch out" className={`${cls} resize-none`} /></div>
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">

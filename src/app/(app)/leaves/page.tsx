@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import SearchSelect from "@/components/SearchSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
+import MobileLeaves from "@/components/mobile/MobileLeaves";
 import {
   LEAVE_BALANCE,
   LEAVE_TYPES,
@@ -143,7 +145,12 @@ export default function LeavesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+    {/* Phones: streamlined leave app. Desktop keeps the full management view. */}
+    <div className="lg:hidden">
+      <MobileLeaves />
+    </div>
+    <div className="hidden space-y-6 lg:block">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -154,9 +161,13 @@ export default function LeavesPage() {
           {/* Year selector */}
           <div className="flex items-center rounded-lg border border-slate-300 bg-white p-1 shadow-sm">
             <button onClick={() => setYear((y) => y - 1)} aria-label="Previous year" className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4"><path d="m15 18-6-6 6-6" /></svg></button>
-            <select value={year} onChange={(e) => setYear(Number(e.target.value))} className="border-0 bg-transparent px-1 text-sm font-semibold text-slate-800 outline-none">
-              {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
+            <SearchableSelect
+              value={String(year)}
+              onChange={(v) => setYear(Number(v))}
+              options={years.map((y) => ({ value: String(y), label: String(y) }))}
+              className="w-24"
+              buttonClassName="border-0 bg-transparent px-1 py-1 font-semibold text-slate-800 hover:border-0 focus:ring-0"
+            />
             <button onClick={() => setYear((y) => y + 1)} aria-label="Next year" className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="h-4 w-4"><path d="m9 18 6-6-6-6" /></svg></button>
           </div>
           <button onClick={() => setOpen(true)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
@@ -311,6 +322,7 @@ export default function LeavesPage() {
       {selected && <DetailDrawer leave={selected} emp={empByName.get(selected.employee)} onDecide={decide} onClose={() => setSelected(null)} />}
       {open && <ApplyLeave employees={employees} leaves={leaves} onClose={() => setOpen(false)} onApply={applyLeave} />}
     </div>
+    </>
   );
 }
 

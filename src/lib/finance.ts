@@ -3,6 +3,7 @@
 // continue to live in billing.ts; this fills the AP / expense side.
 
 import { computeTotals, type Invoice } from "@/lib/billing";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 // ---- helpers -----------------------------------------------------------
 
@@ -10,22 +11,12 @@ export function invoiceTotal(inv: Invoice): number {
   return computeTotals(inv.items, inv.discountPct, inv.taxPct).total;
 }
 
+// DB-backed (app_store via dbStore) — no localStorage.
 function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  return dbGet<T>(key, fallback);
 }
 function write<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore quota */
-  }
+  dbSet<T>(key, value);
 }
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
@@ -56,14 +47,8 @@ export const EXPENSE_STATUS: Record<ExpenseStatus, { label: string; badge: strin
 };
 
 const EXP_KEY = "finance_expenses_v1";
-const SEED_EXPENSES: Expense[] = [
-  { id: "exp-1", date: "2026-06-03", category: "Software", vendor: "Adobe", description: "Creative Cloud annual", amount: 54000, method: "Card", status: "paid", notes: "", createdAt: "2026-06-03" },
-  { id: "exp-2", date: "2026-06-10", category: "Travel", vendor: "IndiGo", description: "Client visit — Mumbai", amount: 12800, method: "Card", status: "approved", notes: "Reimbursable", createdAt: "2026-06-10" },
-  { id: "exp-3", date: "2026-06-18", category: "Office Supplies", vendor: "Staples", description: "Stationery restock", amount: 7400, method: "UPI", status: "pending", notes: "", createdAt: "2026-06-18" },
-  { id: "exp-4", date: "2026-06-21", category: "Utilities", vendor: "BESCOM", description: "Electricity — June", amount: 18600, method: "Bank Transfer", status: "paid", notes: "", createdAt: "2026-06-21" },
-];
 
-export const loadExpenses = () => read<Expense[]>(EXP_KEY, SEED_EXPENSES);
+export const loadExpenses = () => read<Expense[]>(EXP_KEY, []);
 export const saveExpenses = (l: Expense[]) => write(EXP_KEY, l);
 
 // ---- bills (accounts payable) ------------------------------------------
@@ -83,14 +68,8 @@ export type Bill = {
 };
 
 const BILL_KEY = "finance_bills_v1";
-const SEED_BILLS: Bill[] = [
-  { id: "bill-1", number: "BILL-1001", vendor: "WeWork", category: "Rent", issueDate: "2026-06-01", dueDate: "2026-06-30", amount: 145000, paidAmount: 0, notes: "Office rent — June", createdAt: "2026-06-01" },
-  { id: "bill-2", number: "BILL-1002", vendor: "AWS", category: "Software", issueDate: "2026-06-05", dueDate: "2026-06-20", amount: 38200, paidAmount: 38200, notes: "Cloud hosting", createdAt: "2026-06-05" },
-  { id: "bill-3", number: "BILL-1003", vendor: "Tata Tele", category: "Utilities", issueDate: "2026-05-28", dueDate: "2026-06-12", amount: 9600, paidAmount: 0, notes: "Internet & telephony", createdAt: "2026-05-28" },
-  { id: "bill-4", number: "BILL-1004", vendor: "Justdial", category: "Marketing", issueDate: "2026-06-15", dueDate: "2026-07-15", amount: 25000, paidAmount: 10000, notes: "Lead ads", createdAt: "2026-06-15" },
-];
 
-export const loadBills = () => read<Bill[]>(BILL_KEY, SEED_BILLS);
+export const loadBills = () => read<Bill[]>(BILL_KEY, []);
 export const saveBills = (l: Bill[]) => write(BILL_KEY, l);
 
 export function billStatus(b: Bill): BillStatus {

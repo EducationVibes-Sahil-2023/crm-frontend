@@ -4,6 +4,7 @@
 
 import { listDirectory } from "@/lib/directory";
 import { getUser } from "@/lib/auth";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type WaContactType = "team" | "custom";
 export type WaContact = {
@@ -57,24 +58,13 @@ export function teamContacts(): WaContact[] {
   return list;
 }
 
-// ---- localStorage stores ----------------------------------------------
+// ---- DB-backed stores (app_store via dbStore) --------------------------
 
 function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  return dbGet<T>(key, fallback);
 }
 function write<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore quota */
-  }
+  dbSet<T>(key, value);
 }
 
 const TPL_KEY = "wa_templates_v1";

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import { useBranding } from "@/lib/branding";
+import { formatAmount, payForPlan, paymentsApi, type Payment } from "@/lib/paymentsApi";
 import {
   PLANS,
   getPlan,
@@ -25,20 +27,54 @@ function today(): string {
 
 export default function SubscriptionPlans() {
   const toast = useToast();
+  const branding = useBranding();
   const [sub, setSub] = useState<Subscription>(loadSubscription);
   const [cycle, setCycle] = useState<BillingCycle>(sub.cycle);
   const [pending, setPending] = useState<Plan | null>(null);
+  const [payEnabled, setPayEnabled] = useState(false);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [paying, setPaying] = useState(false);
 
   useEffect(() => {
     saveSubscription(sub);
   }, [sub]);
 
+  // Razorpay availability + this workspace's billing history.
+  useEffect(() => {
+    paymentsApi.config().then((c) => setPayEnabled(c.enabled)).catch(() => setPayEnabled(false));
+    refreshPayments();
+  }, []);
+
+  function refreshPayments() {
+    paymentsApi.list().then(setPayments).catch(() => {});
+  }
+
   const active = getPlan(sub.planId) ?? PLANS[0];
   const activeRank = planRank(sub.planId);
 
-  function confirmChange() {
+  async function confirmChange() {
     if (!pending) return;
     const upgrade = planRank(pending.id) > activeRank;
+    const price = priceFor(pending, cycle);
+
+    // Paid plan + Razorpay configured → collect payment before activating.
+    if (price > 0 && payEnabled) {
+      setPaying(true);
+      try {
+        await payForPlan({ id: pending.id, name: pending.name, amount: price, cycle, appName: branding.appName });
+        setSub({ planId: pending.id, cycle, since: today() });
+        refreshPayments();
+        toast.success("Payment successful", `You're now on ${pending.name} (${cycle}).`);
+        setPending(null);
+      } catch (e) {
+        toast.error("Payment not completed", (e as Error).message);
+      } finally {
+        setPaying(false);
+      }
+      return;
+    }
+
+    // Free plan, downgrade, or no gateway configured → switch without a charge.
     setSub({ planId: pending.id, cycle, since: today() });
     toast.success(upgrade ? "Plan upgraded" : "Plan changed", `You're now on ${pending.name} (${cycle}).`);
     setPending(null);
@@ -163,8 +199,47 @@ export default function SubscriptionPlans() {
         })}
       </div>
 
+      {/* Billing history */}
+      {payments.length > 0 && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Icon name="payment" className="h-4 w-4 text-slate-400" />
+            <h2 className="text-base font-bold text-slate-900">Billing history</h2>
+          </div>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                  <th className="py-2 pr-4">Date</th>
+                  <th className="py-2 pr-4">Plan</th>
+                  <th className="py-2 pr-4">Amount</th>
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2">Payment ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payments.map((p) => {
+                  const when = p.paidAt || p.createdAt;
+                  return (
+                    <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                      <td className="py-2.5 pr-4 text-slate-600">{when ? new Date(when).toLocaleDateString() : "—"}</td>
+                      <td className="py-2.5 pr-4 font-medium text-slate-800">{p.planName || p.planId} <span className="text-xs text-slate-400">· {p.cycle}</span></td>
+                      <td className="py-2.5 pr-4 font-medium text-slate-800">{formatAmount(p.amount, p.currency)}</td>
+                      <td className="py-2.5 pr-4"><StatusBadge status={p.status} /></td>
+                      <td className="py-2.5 font-mono text-xs text-slate-500">{p.paymentId || "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <p className="text-center text-xs text-slate-400">
-        Plan changes apply immediately in this workspace. Connect a payment provider to charge real cards.
+        {payEnabled
+          ? "Paid upgrades are charged securely via Razorpay; every payment is saved to your billing history."
+          : "Plan changes apply immediately. Ask your platform admin to enable Razorpay (Platform Settings) to charge real cards."}
       </p>
 
       {/* Confirm modal */}
@@ -197,8 +272,13 @@ export default function SubscriptionPlans() {
                     <button onClick={() => setPending(null)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                       Cancel
                     </button>
-                    <button onClick={confirmChange} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-                      Confirm {upgrade ? "upgrade" : "change"}
+                    <button onClick={confirmChange} disabled={paying} className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-60">
+                      {paying && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+                      {paying
+                        ? "Processing…"
+                        : price > 0 && payEnabled
+                          ? `Pay $${price.toLocaleString()}`
+                          : `Confirm ${upgrade ? "upgrade" : "change"}`}
                     </button>
                   </div>
                 </>
@@ -218,6 +298,16 @@ function Stat({ label, value }: { label: string; value: string }) {
       <p className="font-semibold">{value}</p>
     </div>
   );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const map: Record<string, string> = {
+    paid: "bg-emerald-100 text-emerald-700",
+    created: "bg-amber-100 text-amber-700",
+    failed: "bg-rose-100 text-rose-700",
+  };
+  const label = status === "created" ? "pending" : status;
+  return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ${map[status] ?? "bg-slate-100 text-slate-600"}`}>{label}</span>;
 }
 
 function Row({ label, value }: { label: string; value: string }) {

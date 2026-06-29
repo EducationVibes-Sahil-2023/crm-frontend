@@ -8,7 +8,6 @@ import { Icon, type IconName } from "@/components/icons";
 import { useBranding, initials } from "@/lib/branding";
 import { usePlatform } from "@/lib/platform";
 import { allowedFeatures, isHrefAllowed, ALL_FEATURE_KEYS } from "@/lib/access";
-import { isSuperAdmin } from "@/lib/superAdmin";
 import { hrefModule } from "@/lib/permissions";
 import { usePermissions } from "@/components/PermissionsProvider";
 import { STORE_EVENT } from "@/lib/dbStore";
@@ -89,17 +88,12 @@ export default function Sidebar({
   // Modules the current subscription plan unlocks (Super Admin → Platform
   // Settings → Permissions). Starts open to avoid an SSR/first-paint flash.
   const [allowed, setAllowed] = useState<Set<string>>(() => new Set(ALL_FEATURE_KEYS));
-  // The Platform / Super Admin menu is for the platform owner only — hidden from
-  // client (tenant) logins. Defaults to false so it never flashes for clients;
-  // revealed after hydration if a super-admin session exists.
-  const [isSuper, setIsSuper] = useState(false);
   // Compute once on mount and only re-sync when the workspace settings actually
   // change (plan/permissions are saved). NOT on every navigation — recomputing
   // here per click made the whole menu re-render needlessly on each page change.
   useEffect(() => {
     const sync = () => {
       setAllowed(allowedFeatures());
-      setIsSuper(isSuperAdmin());
     };
     sync();
     window.addEventListener(STORE_EVENT, sync);
@@ -218,9 +212,6 @@ export default function Sidebar({
               .filter(
                 (item) =>
                   isHrefAllowed(item.href, allowed) &&
-                  // Super Admin (Platform) menu only for the platform owner.
-                  // Match "/admin" exactly or "/admin/…" — NOT "/admin-setup".
-                  (isSuper || !(item.href === "/admin" || item.href.startsWith("/admin/"))) &&
                   // Role permissions: the user must be able to view the item's
                   // module (or one of its sub-pages).
                   (canViewHref(item.href) || (item.children ?? []).some((c) => canViewHref(c.href))),

@@ -1,7 +1,7 @@
-// Local-first call tracker. Simulates the companion mobile app: it "syncs" the
-// device call log and keeps only the calls that match a CRM lead — on either the
-// lead's PRIMARY or ALTERNATIVE number. Swap the sync + stores for the real
-// mobile-app upload + API later; the matching logic stays the same.
+// Call tracker helpers. Real device calls are stored in the backend `calls`
+// table and fetched via lib/callsApi — this module keeps only the pure logic:
+// phone normalisation, formatting, and matching calls to CRM leads on either the
+// lead's PRIMARY or ALTERNATIVE number.
 
 import { loadIntakeLeads } from "@/lib/leadStore";
 
@@ -120,81 +120,4 @@ export function trackedCalls(calls: Call[], contacts: LeadContact[]): TrackedCal
     if (m) out.push({ ...call, lead: m.lead, side: m.side });
   }
   return out.sort((a, b) => b.at.localeCompare(a.at));
-}
-
-// ── Storage: install time, calls, last sync ────────────────────────
-const CALLS_KEY = "nexus_calls";
-const INSTALL_KEY = "nexus_call_install_at";
-const SYNC_KEY = "nexus_call_last_sync";
-
-// Installation time — set once, the moment tracking begins.
-export function getInstallTime(): string {
-  if (typeof window === "undefined") return new Date().toISOString();
-  let v = window.localStorage.getItem(INSTALL_KEY);
-  if (!v) {
-    v = new Date(Date.now() - 3 * 24 * 60 * 60000).toISOString(); // pretend installed 3 days ago
-    window.localStorage.setItem(INSTALL_KEY, v);
-  }
-  return v;
-}
-
-export function getLastSync(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(SYNC_KEY);
-}
-
-function setLastSync(): void {
-  if (typeof window !== "undefined") window.localStorage.setItem(SYNC_KEY, new Date().toISOString());
-}
-
-export function loadCalls(device: string): Call[] {
-  if (typeof window === "undefined") return [];
-  void device; // device retained for signature compatibility; no demo seeding
-  try {
-    const raw = window.localStorage.getItem(CALLS_KEY);
-    // No demo seeding — real calls arrive from the device bridge / user actions.
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Call[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveCalls(list: Call[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(CALLS_KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
-}
-
-// Simulate the mobile app pushing newly-logged calls since the last sync.
-// Returns the merged list and how many new calls came in.
-export function syncCalls(existing: Call[], device: string): { calls: Call[]; added: number } {
-  const contacts = leadContacts();
-  // Pull a couple of recent calls from the device log — bias toward CRM leads.
-  const pool = contacts.slice(0, 4);
-  const dirs: CallDirection[] = ["incoming", "outgoing", "missed"];
-  const howMany = 1 + Math.floor(Math.random() * 2);
-  const fresh: Call[] = [];
-  for (let k = 0; k < howMany; k++) {
-    const lead = pool[Math.floor(Math.random() * pool.length)];
-    const useAlt = lead.alternative && Math.random() > 0.6;
-    const dir = dirs[Math.floor(Math.random() * dirs.length)];
-    fresh.push({
-      id: `call-${Date.now()}-${k}`,
-      number: useAlt ? lead.alternative : lead.primary,
-      rawName: lead.name,
-      direction: dir,
-      at: new Date(Date.now() - k * 60000).toISOString(),
-      durationSec: dir === "missed" ? 0 : 30 + Math.floor(Math.random() * 400),
-      device,
-    });
-  }
-  const calls = [...fresh, ...existing];
-  saveCalls(calls);
-  setLastSync();
-  return { calls, added: fresh.length };
 }

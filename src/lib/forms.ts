@@ -1,6 +1,9 @@
 // Lead-capture form definitions + channel connectors (website embed, Excel/CSV,
-// webhook). Local-first: forms persist to localStorage. Submissions flow into
-// the shared lead store (see lib/leadStore).
+// webhook). Forms persist in the per-tenant database (app_store via dbStore) —
+// no localStorage, no seeded demo form. Submissions flow into the shared lead
+// store (see lib/leadStore).
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type FieldType = "text" | "email" | "phone" | "textarea" | "select";
 
@@ -71,51 +74,18 @@ function defaultSettings(): Pick<LeadFormDef, "isPublic" | "successMessage" | "a
   };
 }
 
-function seed(): LeadFormDef[] {
-  return [
-    {
-      id: "form-website",
-      name: "Website Enquiry Form",
-      description: "Embedded on the marketing site — captures admission enquiries.",
-      fields: DEFAULT_FIELDS,
-      defaults: { status: "New", source: "Website", type: "Warm" },
-      channels: { website: true, excel: true, webhook: true },
-      webhookSecret: "whsec_demo000websiteenquiry01",
-      createdAt: new Date().toISOString(),
-      submissions: 0,
-      ...defaultSettings(),
-    },
-  ];
-}
-
 // Backfill settings on forms saved before these fields existed.
 function normalizeForm(f: LeadFormDef): LeadFormDef {
   return { ...defaultSettings(), ...f, autoAssign: { ...defaultSettings().autoAssign, ...f.autoAssign } };
 }
 
 export function loadForms(): LeadFormDef[] {
-  if (typeof window === "undefined") return seed();
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) {
-      const s = seed();
-      window.localStorage.setItem(KEY, JSON.stringify(s));
-      return s;
-    }
-    const parsed = JSON.parse(raw) as LeadFormDef[];
-    return Array.isArray(parsed) ? parsed.map(normalizeForm) : seed();
-  } catch {
-    return seed();
-  }
+  const parsed = dbGet<LeadFormDef[]>(KEY, []);
+  return Array.isArray(parsed) ? parsed.map(normalizeForm) : [];
 }
 
 export function saveForms(list: LeadFormDef[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  dbSet(KEY, list);
 }
 
 export function newForm(name: string): LeadFormDef {

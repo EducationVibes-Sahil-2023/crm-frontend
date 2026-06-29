@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import {
-  AUTO_REPLIES,
   PRESENCE_STYLES,
   clockTime,
   initials,
@@ -65,18 +64,9 @@ export default function ChatWidget() {
     const t = text.trim();
     if (!t || !active) return;
     const id = active.id;
-    const contactId = active.contact.id;
     const mine: Message = { id: `m-${Date.now()}`, conversationId: id, senderId: "me", text: t, createdAt: new Date().toISOString(), status: "sent" };
     setMsgs((prev) => { const next = [...prev, mine]; saveMessages(next); return next; });
     setText("");
-    const reply = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
-    window.setTimeout(() => {
-      setMsgs((prev) => {
-        const next = [...prev, { id: `m-${Date.now()}`, conversationId: id, senderId: contactId, text: reply, createdAt: new Date().toISOString() } as Message];
-        saveMessages(next);
-        return next;
-      });
-    }, 1300);
   }
 
   return (

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import SearchSelect from "@/components/SearchSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import VisitorRequestForm from "@/components/VisitorRequestForm";
 import { useToast } from "@/components/Toast";
 import { getUser } from "@/lib/auth";
@@ -227,20 +228,22 @@ function Badge({ className, children }: { className: string; children: React.Rea
   return <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${className}`}>{children}</span>;
 }
 
+const STATUS_DOT: Record<string, string> = {
+  New: "bg-sky-500", Contacted: "bg-amber-500", Qualified: "bg-indigo-500",
+  Proposal: "bg-violet-500", Won: "bg-emerald-500", Lost: "bg-rose-500",
+};
+
 function StatusControl({ value, options, onChange }: { value: string; options: string[]; onChange: (v: string) => void }) {
   const opts = options.includes(value) ? options : [value, ...options];
   return (
-    <div className="relative inline-flex items-center">
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`cursor-pointer appearance-none rounded-full border-0 py-1 pl-3 pr-7 text-xs font-semibold outline-none ring-1 ring-inset ring-transparent transition focus:ring-2 focus:ring-blue-500/40 ${STATUS_STYLE[value] ?? "bg-slate-100 text-slate-600"}`}
-        title="Change status"
-      >
-        {opts.map((s) => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <Icon name="chevronDown" className="pointer-events-none absolute right-2 h-3.5 w-3.5 opacity-60" />
-    </div>
+    <SearchableSelect
+      value={value}
+      onChange={onChange}
+      options={opts.map((s) => ({ value: s, label: s, dotClass: STATUS_DOT[s] }))}
+      placeholder="Status"
+      className="w-36"
+      buttonClassName="py-1 text-xs font-semibold"
+    />
   );
 }
 
@@ -403,11 +406,15 @@ function CallsTab({
       {/* Log form */}
       <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <select value={direction} onChange={(e) => setDirection(e.target.value as CallDirection)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
-            <option value="outgoing">Outgoing</option>
-            <option value="incoming">Incoming</option>
-            <option value="missed">Missed</option>
-          </select>
+          <SearchableSelect
+            value={direction}
+            onChange={(v) => setDirection(v as CallDirection)}
+            options={[
+              { value: "outgoing", label: "Outgoing" },
+              { value: "incoming", label: "Incoming" },
+              { value: "missed", label: "Missed" },
+            ]}
+          />
           <input value={minutes} onChange={(e) => setMinutes(e.target.value)} type="number" min="0" step="0.5" placeholder="Mins" className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
           <input value={outcome} onChange={(e) => setOutcome(e.target.value)} placeholder="Outcome (e.g. Interested)" className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
         </div>

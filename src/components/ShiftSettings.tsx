@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchableSelect from "@/components/SearchableSelect";
 import { listEmployees } from "@/lib/hr";
 import {
   DEFAULT_SHIFTS,
@@ -119,7 +120,7 @@ export default function ShiftSettings() {
                   <tr key={e.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                     <td className="px-5 py-3"><div className="flex items-center gap-2.5"><span className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${AVATAR_COLORS[i % AVATAR_COLORS.length]}`}>{e.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}</span><span className="font-medium text-slate-800">{e.name}</span></div></td>
                     <td className="px-5 py-3 text-slate-500">{e.designation}</td>
-                    <td className="px-5 py-3"><select value={sid} onChange={(ev) => setAssign((a) => ({ ...a, [e.name]: ev.target.value }))} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-500">{shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select></td>
+                    <td className="px-5 py-3"><SearchableSelect value={sid} onChange={(v) => setAssign((a) => ({ ...a, [e.name]: v }))} options={shifts.map((s) => ({ value: s.id, label: s.name }))} className="min-w-44" buttonClassName="py-1.5" /></td>
                     <td className="px-5 py-3 text-slate-600">{sh ? `${format12(sh.start)} – ${format12(sh.end)} · grace ${sh.graceMinutes}m` : "—"}</td>
                   </tr>
                 );

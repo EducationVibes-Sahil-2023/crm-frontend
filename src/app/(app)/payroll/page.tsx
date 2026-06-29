@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Icon } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
   formatMoney,
   generatePayslips,
@@ -103,9 +104,7 @@ export default function PayrollPage() {
           <p className="mt-1 text-sm text-slate-500">Generate payslips, get Accounts approval, then credit salaries.</p>
         </div>
         <div className="flex items-center gap-2">
-          <select value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500">
-            {recentMonths(6).map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
-          </select>
+          <SearchableSelect value={month} onChange={setMonth} options={recentMonths(6).map((m) => ({ value: m, label: monthLabel(m) }))} className="w-40" />
           <Link href="/admin-setup/payroll" className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
             <Icon name="settings" className="h-4 w-4 text-slate-500" /> Settings
           </Link>

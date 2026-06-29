@@ -9,6 +9,7 @@ import { getUser } from "@/lib/auth";
 import { listEmployees, loadARs, loadHolidays, loadLeaves, loadPunches, punchFromAR, saveARs, savePunches, workedHours, type ARRequest, type Punch } from "@/lib/hr";
 import { evaluatePunch, format12, getUserShift } from "@/lib/shifts";
 import { loadLocations, loadWorkTypes } from "@/lib/locations";
+import SearchSelect from "@/components/SearchSelect";
 
 const AVATAR_COLORS = ["bg-blue-100 text-blue-700", "bg-emerald-100 text-emerald-700", "bg-amber-100 text-amber-700", "bg-violet-100 text-violet-700", "bg-rose-100 text-rose-700", "bg-cyan-100 text-cyan-700"];
 const initials = (n: string) => n.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
@@ -227,8 +228,8 @@ export default function AttendanceMonitorPage() {
         </div>
         {view === "daily" && (
           <div className="flex items-center gap-2">
-            <select value={typeF} onChange={(e) => setTypeF(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:border-blue-500">{typeOptions.map((o) => <option key={o}>{o}</option>)}</select>
-            <select value={statusF} onChange={(e) => setStatusF(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm outline-none focus:border-blue-500">{["All", "On time", "Late", "Absent"].map((o) => <option key={o}>{o}</option>)}</select>
+            <div className="w-44"><SearchSelect value={typeF} onChange={setTypeF} options={typeOptions} /></div>
+            <div className="w-40"><SearchSelect value={statusF} onChange={setStatusF} options={["All", "On time", "Late", "Absent"]} searchable={false} /></div>
           </div>
         )}
       </div>

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "@/components/icons";
+import SearchableSelect from "@/components/SearchableSelect";
 import { PERIODS, type Period } from "@/lib/reportUtils";
 
 // ── Page header with optional period filter + export button ──────────
@@ -29,17 +30,13 @@ export function ReportHeader({
       <div className="flex flex-wrap items-center gap-2">
         {children}
         {period !== undefined && onPeriodChange && (
-          <select
+          <SearchableSelect
             value={period}
-            onChange={(e) => onPeriodChange(e.target.value as Period)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm focus:border-blue-400 focus:outline-none"
-          >
-            {PERIODS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => onPeriodChange(v as Period)}
+            options={PERIODS.map((p) => ({ value: p.value, label: p.label }))}
+            className="w-40"
+            buttonClassName="shadow-sm"
+          />
         )}
         {onExport && (
           <button

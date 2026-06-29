@@ -1,4 +1,10 @@
-// Vendors — supplier directory with details, persisted per workspace.
+// Vendors — supplier directory, persisted to the normalised MySQL `vendors`
+// table via /api/vendors. Reads stay synchronous from an in-memory cache
+// (hydrated once at sign-in by AuthGuard); writes persist to the backend and
+// broadcast VENDORS_EVENT so open views refresh.
+
+import { apiRequest } from "@/lib/api";
+import { dbGet, isStoreReady } from "@/lib/dbStore";
 
 export type Vendor = {
   id: string;
@@ -24,46 +30,153 @@ export const VENDOR_CATEGORIES = ["Supplier", "Service Provider", "Manufacturer"
 export const PAYMENT_TERMS = ["Due on receipt", "Net 15", "Net 30", "Net 45", "Net 60"];
 export const VENDOR_STATUSES = ["Active", "Inactive"];
 
-const STORAGE_KEY = "vendors_v1";
+export const VENDORS_EVENT = "nexus-vendors-changed";
+const OLD_BLOB_KEY = "vendors_v1"; // legacy app_store blob (pre-migration)
+const MIGRATED_FLAG = "nexus_vendors_blob_migrated_v1";
 
-function seed(v: Omit<Vendor, "id" | "createdAt"> & { id: string }): Vendor {
-  return { createdAt: "—", ...v };
+type VendorRow = Record<string, unknown> & { id: string };
+
+let cache: Vendor[] = [];
+let hydrated = false;
+let hydrating: Promise<void> | null = null;
+
+function broadcast() {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(VENDORS_EVENT));
+}
+function isServerId(id: string): boolean {
+  return /^\d+$/.test(id);
 }
 
-export const DEFAULT_VENDORS: Vendor[] = [
-  seed({
-    id: "v-acme", name: "Acme Supplies Co.", contactPerson: "Rajesh Kumar", email: "sales@acmesupplies.in", phone: "+91 98200 11223",
-    category: "Supplier", gstin: "27AABCA1234F1Z5", website: "https://acmesupplies.in", address: "Plot 12, MIDC", city: "Pune", state: "MH", zip: "411001",
-    country: "India", paymentTerms: "Net 30", status: "Active", notes: "Primary stationery & hardware supplier.",
-  }),
-  seed({
-    id: "v-brightprint", name: "BrightPrint Media", contactPerson: "Sneha Iyer", email: "hello@brightprint.in", phone: "+91 99300 44556",
-    category: "Service Provider", gstin: "29AAACB5678K1Z2", website: "https://brightprint.in", address: "4 Residency Rd", city: "Bengaluru", state: "KA", zip: "560025",
-    country: "India", paymentTerms: "Net 15", status: "Active", notes: "Banners, brochures, event printing.",
-  }),
-  seed({
-    id: "v-nimbus", name: "Nimbus Cloud Pvt Ltd", contactPerson: "David Chen", email: "accounts@nimbus.io", phone: "+1 (415) 555-0192",
-    category: "Service Provider", gstin: "—", website: "https://nimbus.io", address: "500 Market St", city: "San Francisco", state: "CA", zip: "94105",
-    country: "USA", paymentTerms: "Net 45", status: "Inactive", notes: "Cloud hosting — contract under review.",
-  }),
-];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function fmtDate(dt: unknown): string {
+  if (!dt) return "—";
+  const d = new Date(String(dt).replace(" ", "T"));
+  if (isNaN(d.getTime())) return "—";
+  return `${MONTHS[d.getMonth()]} ${String(d.getDate()).padStart(2, "0")}, ${d.getFullYear()}`;
+}
 
-export function loadVendors(): Vendor[] {
-  if (typeof window === "undefined") return DEFAULT_VENDORS.map((v) => ({ ...v }));
+function fromRow(r: VendorRow): Vendor {
+  return {
+    id: String(r.id),
+    name: String(r.name ?? ""),
+    contactPerson: String(r.contact_person ?? ""),
+    email: String(r.email ?? ""),
+    phone: String(r.phone ?? ""),
+    category: String(r.category ?? VENDOR_CATEGORIES[0]),
+    gstin: String(r.gstin ?? ""),
+    website: String(r.website ?? ""),
+    address: String(r.address ?? ""),
+    city: String(r.city ?? ""),
+    state: String(r.state ?? ""),
+    zip: String(r.zip ?? ""),
+    country: String(r.country ?? "India"),
+    paymentTerms: String(r.payment_terms ?? "Net 30"),
+    status: String(r.status ?? "Active"),
+    notes: String(r.notes ?? ""),
+    createdAt: fmtDate(r.created_at),
+  };
+}
+
+function toRow(v: Vendor): Record<string, unknown> {
+  return {
+    name: v.name,
+    contact_person: v.contactPerson,
+    email: v.email,
+    phone: v.phone,
+    category: v.category,
+    gstin: v.gstin,
+    website: v.website,
+    address: v.address,
+    city: v.city,
+    state: v.state,
+    zip: v.zip,
+    country: v.country,
+    payment_terms: v.paymentTerms,
+    status: v.status,
+    notes: v.notes,
+  };
+}
+
+/** Load the vendors table into the cache. Runs once (call from AuthGuard). */
+export async function hydrateVendors(force = false): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (hydrated && !force) return;
+  if (hydrating) return hydrating;
+  hydrating = (async () => {
+    try {
+      await migrateBlobIfNeeded();
+      const res = await apiRequest<{ vendors: VendorRow[] }>("/vendors");
+      cache = (res.vendors ?? []).map(fromRow);
+    } catch {
+      /* backend offline — keep cache */
+    } finally {
+      hydrated = true;
+      hydrating = null;
+      broadcast();
+    }
+  })();
+  return hydrating;
+}
+
+/** One-time import of the legacy app_store blob into the vendors table. */
+async function migrateBlobIfNeeded(): Promise<void> {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_VENDORS.map((v) => ({ ...v }));
-    const parsed = JSON.parse(raw) as Vendor[];
-    if (!Array.isArray(parsed)) return DEFAULT_VENDORS.map((v) => ({ ...v }));
-    return parsed;
+    if (localStorage.getItem(MIGRATED_FLAG)) return;
+    if (!isStoreReady()) return;
+    const blob = dbGet<Vendor[]>(OLD_BLOB_KEY, []);
+    if (Array.isArray(blob) && blob.length > 0) {
+      const existing = await apiRequest<{ vendors: VendorRow[] }>("/vendors");
+      if ((existing.vendors ?? []).length === 0) {
+        for (const v of blob) {
+          try {
+            await apiRequest("/vendors", { method: "POST", body: JSON.stringify(toRow(v)) });
+          } catch {
+            /* skip a bad row */
+          }
+        }
+      }
+    }
+    localStorage.setItem(MIGRATED_FLAG, "1");
   } catch {
-    return DEFAULT_VENDORS.map((v) => ({ ...v }));
+    /* retry on a later hydrate */
   }
 }
 
-export function saveVendors(vendors: Vendor[]): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(vendors));
+export function loadVendors(): Vendor[] {
+  return cache;
+}
+
+/** Create a vendor; resolves to the stored row (with its real id). */
+export async function addVendor(v: Vendor): Promise<Vendor> {
+  const res = await apiRequest<{ vendor: VendorRow }>("/vendors", { method: "POST", body: JSON.stringify(toRow(v)) });
+  const saved = fromRow(res.vendor);
+  cache = [saved, ...cache];
+  broadcast();
+  return saved;
+}
+
+/** Update a vendor by id. */
+export async function updateVendor(id: string, v: Vendor): Promise<void> {
+  cache = cache.map((x) => (x.id === id ? { ...v, id } : x)); // optimistic
+  broadcast();
+  if (!isServerId(id)) return;
+  const res = await apiRequest<{ vendor: VendorRow }>(`/vendors/${id}`, { method: "PUT", body: JSON.stringify(toRow(v)) });
+  cache = cache.map((x) => (x.id === id ? fromRow(res.vendor) : x));
+  broadcast();
+}
+
+/** Delete a vendor by id. */
+export async function removeVendor(id: string): Promise<void> {
+  cache = cache.filter((x) => x.id !== id);
+  broadcast();
+  if (isServerId(id)) await apiRequest(`/vendors/${id}`, { method: "DELETE" }).catch(() => {});
+}
+
+export function subscribeVendors(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  const h = () => cb();
+  window.addEventListener(VENDORS_EVENT, h);
+  return () => window.removeEventListener(VENDORS_EVENT, h);
 }
 
 export function emptyVendor(): Vendor {

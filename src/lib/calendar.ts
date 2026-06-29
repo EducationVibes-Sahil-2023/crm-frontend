@@ -1,5 +1,7 @@
-// Local-first calendar store + date helpers. Persists events to localStorage so
-// the module works without a backend; swap these helpers for `api` calls later.
+// Calendar store + date helpers. Events persist in the per-tenant database
+// (app_store via dbStore) — no localStorage, no seeded demo events.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type CalEvent = {
   id: string;
@@ -29,43 +31,13 @@ export function categoryColor(name: string): string {
 
 const KEY = "nexus_calendar_events";
 
-const SEED: CalEvent[] = [
-  { id: "e1", title: "Weekly sales sync", date: ymd(new Date()), start: "10:00", end: "10:45", allDay: false, color: "blue", category: "Meeting", location: "Zoom" },
-  { id: "e2", title: "Client demo: Infosys Ltd.", date: shift(2), start: "14:00", end: "15:00", allDay: false, color: "blue", category: "Meeting", location: "Meeting Room A" },
-  { id: "e3", title: "Proposal deadline", date: shift(3), allDay: true, color: "rose", category: "Deadline" },
-  { id: "e4", title: "1:1 with manager", date: shift(-1), start: "16:30", end: "17:00", allDay: false, color: "violet", category: "Personal" },
-  { id: "e5", title: "Company holiday", date: shift(5), allDay: true, color: "emerald", category: "Holiday" },
-  { id: "e6", title: "Submit expense report", date: shift(1), start: "09:00", allDay: false, color: "amber", category: "Reminder" },
-];
-
-function shift(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return ymd(d);
-}
-
 export function loadEvents(): CalEvent[] {
-  if (typeof window === "undefined") return SEED;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) {
-      window.localStorage.setItem(KEY, JSON.stringify(SEED));
-      return SEED;
-    }
-    const parsed = JSON.parse(raw) as CalEvent[];
-    return Array.isArray(parsed) ? parsed : SEED;
-  } catch {
-    return SEED;
-  }
+  const parsed = dbGet<CalEvent[]>(KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveEvents(list: CalEvent[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  dbSet(KEY, list);
 }
 
 // ---- date helpers -----------------------------------------------------------

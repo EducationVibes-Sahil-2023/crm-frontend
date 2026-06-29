@@ -149,20 +149,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Admin Setup", href: "/admin-setup", icon: "settings" },
     ],
   },
-  {
-    heading: "Platform",
-    items: [
-      {
-        label: "Super Admin",
-        href: "/admin",
-        icon: "shield",
-        children: [
-          { label: "Overview", href: "/admin", icon: "dashboard" },
-          { label: "Clients", href: "/admin/clients", icon: "briefcase" },
-          { label: "Platform Settings", href: "/admin/settings", icon: "settings" },
-          { label: "Landing Page", href: "/", icon: "media" },
-        ],
-      },
-    ],
-  },
+  // NOTE: the platform owner's "Super Admin" menu is intentionally NOT in the
+  // client sidebar — client logins must never see it. The super-admin console
+  // lives at /admin (its own login at /admin/login + its own navigation).
 ];

@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { Icon, type IconName } from "@/components/icons";
+import SearchableSelect from "@/components/SearchableSelect";
 import { useToast } from "@/components/Toast";
 import {
   formatBytes,
@@ -488,15 +489,16 @@ export default function MediaPage() {
               className="w-44 rounded-lg border border-slate-300 bg-slate-50 py-2 pl-8 pr-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20"
             />
           </div>
-          <select
+          <SearchableSelect
             value={sort}
-            onChange={(e) => setSort(e.target.value as Sort)}
-            className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-          >
-            <option value="name">Name</option>
-            <option value="date">Newest</option>
-            <option value="size">Largest</option>
-          </select>
+            onChange={(v) => setSort(v as Sort)}
+            options={[
+              { value: "name", label: "Name" },
+              { value: "date", label: "Newest" },
+              { value: "size", label: "Largest" },
+            ]}
+            className="w-36"
+          />
           <div className="flex overflow-hidden rounded-lg border border-slate-300">
             {(["grid", "list"] as View[]).map((v) => (
               <button

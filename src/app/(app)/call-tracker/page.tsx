@@ -10,19 +10,16 @@ import {
   DIRECTION_META,
   clockTime,
   formatDuration,
-  getInstallTime,
-  getLastSync,
   initials,
   leadContacts,
-  loadCalls,
   relativeTime,
-  syncCalls,
   trackedCalls,
   type Call,
   type CallDirection,
   type LeadContact,
   type TrackedCall,
 } from "@/lib/callTracker";
+import { callsApi } from "@/lib/callsApi";
 
 type DirFilter = "all" | CallDirection;
 type Tab = "calls" | "leads";
@@ -40,7 +37,6 @@ export default function CallTrackerPage() {
   const [hasPhone, setHasPhone] = useState(true);
   const [calls, setCalls] = useState<Call[]>([]);
   const [contacts, setContacts] = useState<LeadContact[]>([]);
-  const [installAt, setInstallAt] = useState("");
   const [lastSync, setLastSyncState] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("calls");
   const [dir, setDir] = useState<DirFilter>("all");
@@ -53,9 +49,14 @@ export default function CallTrackerPage() {
     setDevice(dev);
     setHasPhone(!!dev && dev.trim() !== "" && dev !== "—");
     setContacts(leadContacts());
-    setCalls(loadCalls(dev));
-    setInstallAt(getInstallTime());
-    setLastSyncState(getLastSync());
+    // Real calls from the database (empty until the device uploads any).
+    callsApi
+      .list()
+      .then((rows) => {
+        setCalls(rows);
+        setLastSyncState(new Date().toISOString());
+      })
+      .catch(() => setCalls([]));
   }, []);
 
   const tracked = useMemo(() => trackedCalls(calls, contacts), [calls, contacts]);
@@ -96,18 +97,19 @@ export default function CallTrackerPage() {
     return Array.from(map.values()).sort((a, b) => b.calls[0].at.localeCompare(a.calls[0].at));
   }, [visible]);
 
-  function sync() {
+  async function sync() {
     setSyncing(true);
-    // Simulate the round-trip to the device + database.
-    window.setTimeout(() => {
-      const before = trackedCalls(calls, contacts).length;
-      const { calls: next, added } = syncCalls(calls, device);
-      setCalls(next);
-      setLastSyncState(getLastSync());
+    try {
+      const rows = await callsApi.list();
+      setCalls(rows);
+      setLastSyncState(new Date().toISOString());
+      const matched = trackedCalls(rows, contacts).length;
+      toast.success("Calls refreshed", `${rows.length} call${rows.length === 1 ? "" : "s"} · ${matched} matched a lead.`);
+    } catch (e) {
+      toast.error("Couldn't refresh", (e as Error).message);
+    } finally {
       setSyncing(false);
-      const matchedAdded = trackedCalls(next, contacts).length - before;
-      toast.success("Calls synced", `${added} new from device · ${Math.max(0, matchedAdded)} matched a lead.`);
-    }, 900);
+    }
   }
 
   return (
@@ -174,12 +176,8 @@ export default function CallTrackerPage() {
           Device: <b className="text-slate-700">{device || "—"}</b>
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <Icon name="download" className="h-3.5 w-3.5 text-slate-400" />
-          Tracking since <b className="text-slate-700">{installAt ? clockTime(installAt) : "—"}</b>
-        </span>
-        <span className="inline-flex items-center gap-1.5">
           <Icon name="refresh" className="h-3.5 w-3.5 text-slate-400" />
-          Last sync: <b className="text-slate-700">{lastSync ? relativeTime(lastSync) : "never"}</b>
+          Last refresh: <b className="text-slate-700">{lastSync ? relativeTime(lastSync) : "never"}</b>
         </span>
         {ignored > 0 && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-slate-400">

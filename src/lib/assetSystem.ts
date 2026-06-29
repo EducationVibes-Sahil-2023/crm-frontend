@@ -1,8 +1,9 @@
 // Shared helpers for the Asset Management system — warranty status,
-// depreciation maths, and a localStorage-backed maintenance log.
+// depreciation maths, and a DB-backed maintenance log.
 // Builds on the asset register data layer in @/lib/assets.
 
 import type { Asset } from "@/lib/assets";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 // ---- warranty / AMC ----------------------------------------------------
 
@@ -41,17 +42,10 @@ export const DEFAULT_DEPRECIATION: DepreciationSettings = { lifeYears: 5, salvag
 const DEP_KEY = "asset_depreciation_v1";
 
 export function loadDepreciation(): DepreciationSettings {
-  if (typeof window === "undefined") return { ...DEFAULT_DEPRECIATION };
-  try {
-    const raw = window.localStorage.getItem(DEP_KEY);
-    return raw ? { ...DEFAULT_DEPRECIATION, ...JSON.parse(raw) } : { ...DEFAULT_DEPRECIATION };
-  } catch {
-    return { ...DEFAULT_DEPRECIATION };
-  }
+  return { ...DEFAULT_DEPRECIATION, ...dbGet<Partial<DepreciationSettings>>(DEP_KEY, {}) };
 }
 export function saveDepreciation(s: DepreciationSettings): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(DEP_KEY, JSON.stringify(s));
+  dbSet(DEP_KEY, s);
 }
 
 export type Depreciation = {
@@ -102,22 +96,11 @@ export type Maintenance = {
 const MNT_KEY = "asset_maintenance_v1";
 
 export function loadMaintenance(): Maintenance[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(MNT_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Maintenance[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = dbGet<Maintenance[]>(MNT_KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 export function saveMaintenance(list: Maintenance[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(MNT_KEY, JSON.stringify(list.slice(0, 500)));
-  } catch {
-    /* ignore quota */
-  }
+  dbSet(MNT_KEY, list.slice(0, 500));
 }
 
 export function maintenanceStatus(m: Maintenance): MaintenanceStatus {

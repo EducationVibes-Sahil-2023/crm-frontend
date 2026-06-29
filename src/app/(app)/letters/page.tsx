@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchSelect from "@/components/SearchSelect";
 import { formatMoney, listEmployees, loadLetters, saveLetters, type Letter, type LetterKind } from "@/lib/hr";
 
 export default function LettersPage() {
@@ -52,7 +53,7 @@ export default function LettersPage() {
             <button onClick={() => setKind("offer")} className={`flex-1 rounded-md px-3 py-1.5 font-medium ${kind === "offer" ? "bg-blue-600 text-white" : "text-slate-600"}`}>Offer Letter</button>
             <button onClick={() => setKind("increment")} className={`flex-1 rounded-md px-3 py-1.5 font-medium ${kind === "increment" ? "bg-blue-600 text-white" : "text-slate-600"}`}>Increment Letter</button>
           </div>
-          <L label="Employee"><select value={employee} onChange={(e) => onPick(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500">{employees.map((e) => <option key={e.id}>{e.name}</option>)}</select></L>
+          <L label="Employee"><SearchSelect value={employee} onChange={onPick} options={employees.map((e) => e.name)} /></L>
           <L label="Designation"><input value={designation} onChange={(e) => setDesignation(e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" /></L>
           {kind === "increment" && (
             <L label="Previous CTC (monthly)"><input type="number" value={prevCtc} onChange={(e) => setPrevCtc(Number(e.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500" /></L>

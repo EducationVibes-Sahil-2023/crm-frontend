@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icons";
+import MobileHrmsHome from "@/components/mobile/MobileHrmsHome";
 import { getUser } from "@/lib/auth";
 import {
   formatMoney,
@@ -87,7 +88,12 @@ export default function HrmsDashboard() {
   ];
 
   return (
-    <div className="space-y-6">
+    <>
+      {/* Phones: LinkedIn-style HRMS feed. Desktop keeps the full dashboard. */}
+      <div className="lg:hidden">
+        <MobileHrmsHome />
+      </div>
+      <div className="hidden space-y-6 lg:block">
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white shadow-sm sm:p-8">
         <div className="absolute inset-0 opacity-20 [background:radial-gradient(circle_at_15%_20%,white,transparent_45%),radial-gradient(circle_at_85%_90%,white,transparent_40%)]" />
@@ -175,7 +181,8 @@ export default function HrmsDashboard() {
           )}
         </Panel>
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 

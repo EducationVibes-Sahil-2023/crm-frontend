@@ -5,10 +5,14 @@ import { Icon } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import VendorForm from "@/components/VendorForm";
+import SearchSelect from "@/components/SearchSelect";
 import {
   VENDOR_CATEGORIES,
   loadVendors,
-  saveVendors,
+  subscribeVendors,
+  addVendor,
+  updateVendor,
+  removeVendor as removeVendorRow,
   type Vendor,
 } from "@/lib/vendors";
 
@@ -22,7 +26,6 @@ export default function VendorsPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [ready, setReady] = useState(false);
 
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All Categories");
@@ -31,18 +34,19 @@ export default function VendorsPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Vendor | null>(null);
 
-  // Load (simulated) then persist on every change.
+  // Read from the DB-backed cache; stay live as it changes.
   useEffect(() => {
-    const t = setTimeout(() => {
-      setVendors(loadVendors());
+    setVendors(loadVendors());
+    const t = setTimeout(() => setLoading(false), 600);
+    const unsub = subscribeVendors(() => {
+      setVendors([...loadVendors()]);
       setLoading(false);
-      setReady(true);
-    }, 600);
-    return () => clearTimeout(t);
+    });
+    return () => {
+      clearTimeout(t);
+      unsub();
+    };
   }, []);
-  useEffect(() => {
-    if (ready) saveVendors(vendors);
-  }, [vendors, ready]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -61,23 +65,22 @@ export default function VendorsPage() {
     setFormOpen(true);
   }
   function removeVendor(v: Vendor) {
-    setVendors((list) => list.filter((x) => x.id !== v.id));
+    void removeVendorRow(v.id);
     toast.info("Vendor removed", `${v.name} was deleted.`);
   }
-  function handleSubmit(vendor: Vendor) {
-    if (editing) {
-      setVendors((list) => list.map((x) => (x.id === editing.id ? { ...vendor, id: editing.id } : x)));
-      toast.success("Vendor saved", `${vendor.name} was updated.`);
-    } else {
-      const created: Vendor = {
-        ...vendor,
-        id: `v-${Date.now().toString(36)}`,
-        createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-      };
-      setVendors((list) => [created, ...list]);
-      toast.success("Vendor added", `${vendor.name} was saved.`);
-    }
+  async function handleSubmit(vendor: Vendor) {
     setFormOpen(false);
+    try {
+      if (editing) {
+        await updateVendor(editing.id, { ...vendor, id: editing.id });
+        toast.success("Vendor saved", `${vendor.name} was updated.`);
+      } else {
+        await addVendor(vendor);
+        toast.success("Vendor added", `${vendor.name} was saved.`);
+      }
+    } catch (e) {
+      toast.error("Save failed", (e as Error).message);
+    }
   }
 
   const activeCount = vendors.filter((v) => v.status === "Active").length;
@@ -104,12 +107,8 @@ export default function VendorsPage() {
             <Icon name="search" className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, email, contact, city…" className="w-full rounded-lg border border-slate-300 bg-white py-1.5 pl-8 pr-2 text-xs outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
           </div>
-          <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-blue-500">
-            {["All Categories", ...VENDOR_CATEGORIES].map((o) => <option key={o}>{o}</option>)}
-          </select>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs outline-none focus:border-blue-500">
-            {["All Statuses", "Active", "Inactive"].map((o) => <option key={o}>{o}</option>)}
-          </select>
+          <SearchSelect value={category} onChange={setCategory} options={["All Categories", ...VENDOR_CATEGORIES]} />
+          <SearchSelect value={status} onChange={setStatus} options={["All Statuses", "Active", "Inactive"]} />
         </div>
       </div>
 

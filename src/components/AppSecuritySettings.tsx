@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchableSelect from "@/components/SearchableSelect";
 import { loadSecurity, saveSecurity, type AppSecurity } from "@/lib/mobile";
 
 export default function AppSecuritySettings() {
@@ -84,9 +85,12 @@ export default function AppSecuritySettings() {
           <div className="rounded-xl border border-slate-200 p-4">
             <p className="text-sm font-medium text-slate-800">Auto-lock</p>
             <p className="mb-2 text-xs text-slate-500">Lock after this much idle time.</p>
-            <select value={cfg.autoLockMin} onChange={(e) => set("autoLockMin", Number(e.target.value))} className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500">
-              {[1, 2, 5, 10, 15, 30].map((m) => <option key={m} value={m}>{m} minute{m > 1 ? "s" : ""}</option>)}
-            </select>
+            <SearchableSelect
+              value={String(cfg.autoLockMin)}
+              onChange={(v) => set("autoLockMin", Number(v))}
+              options={[1, 2, 5, 10, 15, 30].map((m) => ({ value: String(m), label: `${m} minute${m > 1 ? "s" : ""}` }))}
+              className="w-full"
+            />
           </div>
           <div className="space-y-3">
             <Toggle label="Lock on background" desc="Lock immediately when the app is minimised." checked={cfg.lockOnBackground} onChange={(v) => set("lockOnBackground", v)} />

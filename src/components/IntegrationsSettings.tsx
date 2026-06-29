@@ -6,6 +6,7 @@ import { Icon, type IconName } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import PushNotificationSettings from "@/components/PushNotificationSettings";
 import FreeApiSettings from "@/components/FreeApiSettings";
+import SearchableSelect from "@/components/SearchableSelect";
 import { loadPushConfig } from "@/lib/pushConfig";
 import { countEnabledFreeApis, loadFreeApis } from "@/lib/freeApis";
 import { smtpApi } from "@/lib/smtpApi";
@@ -565,13 +566,7 @@ function Secret({ value, onChange, placeholder }: { value: string; onChange: (v:
 }
 
 function SelectField({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
-      {options.map((o) => (
-        <option key={o.value} value={o.value}>{o.label}</option>
-      ))}
-    </select>
-  );
+  return <SearchableSelect value={value} onChange={onChange} options={options} className="w-full" buttonClassName="py-2.5" />;
 }
 
 function ToggleRow({ label, desc, checked, onChange }: { label: string; desc: string; checked: boolean; onChange: (v: boolean) => void }) {

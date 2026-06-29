@@ -1,7 +1,8 @@
 // Website Visitor Tracker — anonymous + identified visitor sessions captured
 // from the marketing site, with source/device analytics and convert-to-lead.
-// Local-first (localStorage); swap the seed + "live" simulation for a real
-// analytics/event stream later.
+// Sessions persist in the per-tenant database (app_store via dbStore).
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type VisitorStatus = "New" | "Returning" | "Active" | "Converted";
 export type DeviceKind = "Desktop" | "Mobile" | "Tablet";
@@ -70,74 +71,15 @@ export function relativeTime(iso: string): string {
 
 const KEY = "nexus_visitor_sessions";
 
-function iso(minsAgo: number): string {
-  return new Date(Date.now() - minsAgo * 60000).toISOString();
-}
-
-function seed(): VisitorSession[] {
-  return [
-    {
-      id: "vs-1", visitorName: "Anonymous", identified: false, email: "", phone: "",
-      source: "Google", device: "Mobile", browser: "Chrome", city: "Mumbai", country: "India",
-      landing: "/pricing", pages: ["/pricing", "/features", "/contact"], durationSec: 245,
-      firstSeen: iso(3), lastSeen: iso(0), status: "Active",
-    },
-    {
-      id: "vs-2", visitorName: "Rohit Sharma", identified: true, email: "rohit@brightedu.in", phone: "+91 98220 11000",
-      source: "LinkedIn", device: "Desktop", browser: "Edge", city: "Pune", country: "India",
-      landing: "/demo", pages: ["/demo", "/pricing", "/pricing", "/signup"], durationSec: 612,
-      firstSeen: iso(8), lastSeen: iso(1), status: "Active",
-    },
-    {
-      id: "vs-3", visitorName: "Anonymous", identified: false, email: "", phone: "",
-      source: "Facebook", device: "Mobile", browser: "Safari", city: "Delhi", country: "India",
-      landing: "/", pages: ["/", "/features"], durationSec: 58,
-      firstSeen: iso(95), lastSeen: iso(92), status: "New",
-    },
-    {
-      id: "vs-4", visitorName: "Sneha Kulkarni", identified: true, email: "sneha@example.com", phone: "+91 90011 88776",
-      source: "Direct", device: "Desktop", browser: "Chrome", city: "Bengaluru", country: "India",
-      landing: "/pricing", pages: ["/pricing", "/demo", "/contact"], durationSec: 410,
-      firstSeen: iso(60 * 26), lastSeen: iso(60 * 3), status: "Returning",
-    },
-    {
-      id: "vs-5", visitorName: "Imran Sheikh", identified: true, email: "imran@nimbus.co", phone: "+91 73456 12390",
-      source: "Email", device: "Tablet", browser: "Chrome", city: "Hyderabad", country: "India",
-      landing: "/offer", pages: ["/offer", "/signup"], durationSec: 320,
-      firstSeen: iso(60 * 40), lastSeen: iso(60 * 39), status: "Converted", convertedLeadId: "seed",
-    },
-    {
-      id: "vs-6", visitorName: "Anonymous", identified: false, email: "", phone: "",
-      source: "Referral", device: "Desktop", browser: "Firefox", city: "Chennai", country: "India",
-      landing: "/blog/crm-tips", pages: ["/blog/crm-tips", "/features", "/pricing", "/demo"], durationSec: 530,
-      firstSeen: iso(130), lastSeen: iso(120), status: "New",
-    },
-  ];
-}
-
+// Per-tenant DB-backed (app_store via dbStore) — no localStorage, no seeded
+// demo visitors. Real sessions are written by the tracker as they arrive.
 export function loadSessions(): VisitorSession[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) {
-      const seeded = seed();
-      window.localStorage.setItem(KEY, JSON.stringify(seeded));
-      return seeded;
-    }
-    const parsed = JSON.parse(raw) as VisitorSession[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = dbGet<VisitorSession[]>(KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveSessions(list: VisitorSession[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  dbSet(KEY, list);
 }
 
 // Simulate the live event stream: a new visitor lands or an active one advances.

@@ -1,5 +1,8 @@
 // Lead transfer requests — a manager-approval workflow for reassigning a lead
-// from one counsellor to another. Local-first (localStorage); swap for API later.
+// from one counsellor to another. Persisted to the per-tenant database
+// (app_store via dbStore).
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type TransferStatus = "Pending" | "Approved" | "Rejected" | "Cancelled";
 
@@ -53,74 +56,13 @@ export function relativeTime(iso: string): string {
 
 const KEY = "nexus_transfer_requests";
 
-function iso(minsAgo: number): string {
-  return new Date(Date.now() - minsAgo * 60000).toISOString();
-}
-
-function seed(): TransferRequest[] {
-  return [
-    {
-      id: "tr-1",
-      leadName: "Acme Corp — Rahul Bose",
-      fromUser: "Diya Patel",
-      toUser: "Aarav Sharma",
-      reason: "Lead is in Aarav's territory and speaks his regional language.",
-      status: "Pending",
-      requestedBy: "Diya Patel",
-      requestedAt: iso(40),
-    },
-    {
-      id: "tr-2",
-      leadName: "Globex — Meera Iyer",
-      fromUser: "Vivaan Reddy",
-      toUser: "Ananya Nair",
-      reason: "Going on leave next week, handing over active deals.",
-      status: "Approved",
-      requestedBy: "Vivaan Reddy",
-      requestedAt: iso(60 * 20),
-      decidedBy: "Administrator",
-      decidedAt: iso(60 * 18),
-      decisionNote: "Approved — smooth handover.",
-    },
-    {
-      id: "tr-3",
-      leadName: "Nimbus — Kabir Mehta",
-      fromUser: "Aditya Iyer",
-      toUser: "Ishaan Gupta",
-      reason: "Requesting transfer, but Aditya is already engaged with the client.",
-      status: "Rejected",
-      requestedBy: "Ishaan Gupta",
-      requestedAt: iso(60 * 30),
-      decidedBy: "Administrator",
-      decidedAt: iso(60 * 28),
-      decisionNote: "Owner already in active conversation — keep as is.",
-    },
-  ];
-}
-
 export function loadTransferRequests(): TransferRequest[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) {
-      const seeded = seed();
-      window.localStorage.setItem(KEY, JSON.stringify(seeded));
-      return seeded;
-    }
-    const parsed = JSON.parse(raw) as TransferRequest[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = dbGet<TransferRequest[]>(KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveTransferRequests(list: TransferRequest[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  dbSet(KEY, list);
 }
 
 export function newTransferId(): string {

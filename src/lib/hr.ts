@@ -2,6 +2,7 @@
 // All client-side / localStorage, consistent with the rest of the dashboard.
 
 import { listDirectory } from "@/lib/directory";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 // ---------- employees ----------
 
@@ -50,18 +51,14 @@ export function recentMonths(count: number): string[] {
 export function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
+// Backed by the per-tenant database (app_store) via dbStore — no browser
+// localStorage, no demo seeds. Reads come from the hydrated cache (AuthGuard
+// loads it before the app renders); writes persist to the DB.
 function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  return dbGet<T>(key, fallback);
 }
 function write<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  dbSet<T>(key, value);
 }
 
 // ---------- payroll settings ----------
@@ -175,17 +172,7 @@ export function loadLeaves(): Leave[] {
 export function saveLeaves(l: Leave[]): void {
   write("hr_leaves_v1", l);
 }
-const DEFAULT_LEAVES: Leave[] = [
-  { id: "lv1", employee: "Diya Patel", type: "Sick", from: "Jun 18, 2026", to: "Jun 19, 2026", days: 2, reason: "Fever", status: "Pending", appliedAt: "Jun 17, 2026" },
-  { id: "lv2", employee: "Vivaan Reddy", type: "Casual", from: "Jun 23, 2026", to: "Jun 23, 2026", days: 1, reason: "Personal work", status: "Approved", appliedAt: "Jun 20, 2026" },
-  { id: "lv3", employee: "Ananya Nair", type: "Earned", from: "Jul 01, 2026", to: "Jul 05, 2026", days: 5, reason: "Family trip", status: "Pending", appliedAt: "Jun 21, 2026" },
-  { id: "lv4", employee: "Aarav Sharma", type: "Casual", from: "Feb 10, 2026", to: "Feb 11, 2026", days: 2, reason: "Family function", status: "Approved", appliedAt: "Feb 05, 2026" },
-  { id: "lv5", employee: "Diya Patel", type: "Earned", from: "Apr 14, 2026", to: "Apr 18, 2026", days: 5, reason: "Vacation", status: "Approved", appliedAt: "Apr 01, 2026" },
-  // Prior-year history (so year-wise view has data to compare).
-  { id: "lv6", employee: "Aarav Sharma", type: "Sick", from: "Nov 12, 2025", to: "Nov 13, 2025", days: 2, reason: "Flu", status: "Approved", appliedAt: "Nov 11, 2025" },
-  { id: "lv7", employee: "Vivaan Reddy", type: "Earned", from: "Dec 22, 2025", to: "Dec 26, 2025", days: 5, reason: "Year-end break", status: "Approved", appliedAt: "Dec 10, 2025" },
-  { id: "lv8", employee: "Ananya Nair", type: "Casual", from: "Aug 15, 2025", to: "Aug 15, 2025", days: 1, reason: "Personal", status: "Rejected", appliedAt: "Aug 12, 2025" },
-];
+const DEFAULT_LEAVES: Leave[] = [];
 
 // ---------- holidays ----------
 
@@ -259,34 +246,7 @@ function toIso(label: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function hol(name: string, iso: string, type: string, state: string): Holiday {
-  return { id: `h-${iso}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name, iso, date: isoLabel(iso), type, state };
-}
-
-const DEFAULT_HOLIDAYS: Holiday[] = [
-  // 2026 — national / festival (All India)
-  hol("New Year's Day", "2026-01-01", "Optional", ALL_INDIA),
-  hol("Republic Day", "2026-01-26", "National", ALL_INDIA),
-  hol("Holi", "2026-03-04", "Festival", ALL_INDIA),
-  hol("Independence Day", "2026-08-15", "National", ALL_INDIA),
-  hol("Gandhi Jayanti", "2026-10-02", "National", ALL_INDIA),
-  hol("Diwali", "2026-11-08", "Festival", ALL_INDIA),
-  hol("Christmas", "2026-12-25", "Festival", ALL_INDIA),
-  // 2026 — state specific
-  hol("Pongal", "2026-01-15", "Festival", "Tamil Nadu"),
-  hol("Gudi Padwa", "2026-03-19", "Festival", "Maharashtra"),
-  hol("Maharashtra Day", "2026-05-01", "National", "Maharashtra"),
-  hol("Onam", "2026-08-26", "Festival", "Kerala"),
-  hol("Durga Puja", "2026-10-19", "Festival", "West Bengal"),
-  hol("Karnataka Rajyotsava", "2026-11-01", "National", "Karnataka"),
-  hol("Chhath Puja", "2026-11-15", "Festival", "Bihar"),
-  // 2025 — a few so the year selector has history
-  hol("Republic Day", "2025-01-26", "National", ALL_INDIA),
-  hol("Holi", "2025-03-14", "Festival", ALL_INDIA),
-  hol("Independence Day", "2025-08-15", "National", ALL_INDIA),
-  hol("Karnataka Rajyotsava", "2025-11-01", "National", "Karnataka"),
-  hol("Diwali", "2025-10-20", "Festival", ALL_INDIA),
-];
+const DEFAULT_HOLIDAYS: Holiday[] = [];
 
 // ---------- attendance (punch in / out for the current user) ----------
 
@@ -321,10 +281,7 @@ export type ARRequest = {
   managerNote?: string;
 };
 
-const DEFAULT_ARS: ARRequest[] = [
-  { id: "ar1", employee: "Diya Patel", date: "2026-06-23", checkIn: "09:35 AM", checkOut: "06:30 PM", workType: "Work From Office", reason: "Biometric failed at the gate; security can confirm entry time.", status: "Pending", appliedAt: "Jun 24, 2026" },
-  { id: "ar2", employee: "Vivaan Reddy", date: "2026-06-22", checkIn: "10:00 AM", checkOut: "07:00 PM", workType: "Field Work", reason: "On a campus visit all day, could not punch in.", status: "Pending", appliedAt: "Jun 23, 2026" },
-];
+const DEFAULT_ARS: ARRequest[] = [];
 
 export function loadARs(): ARRequest[] {
   return read<ARRequest[]>("hr_ar_v1", DEFAULT_ARS);
@@ -389,12 +346,7 @@ export function loadPolicies(): Policy[] {
 export function savePolicies(p: Policy[]): void {
   write("hr_policies_v1", p);
 }
-const DEFAULT_POLICIES: Policy[] = [
-  { id: "p1", title: "Leave Policy", category: "Leave", summary: "Entitlements, accrual and approval rules for casual, sick and earned leave.", updated: "Apr 01, 2026" },
-  { id: "p2", title: "Attendance & Working Hours", category: "Attendance", summary: "Office hours, punch-in/out, regularisation (AR) and remote-work guidelines.", updated: "Apr 01, 2026" },
-  { id: "p3", title: "Code of Conduct", category: "Compliance", summary: "Expected professional behaviour, anti-harassment and disciplinary process.", updated: "Mar 10, 2026" },
-  { id: "p4", title: "Payroll & Reimbursement", category: "Payroll", summary: "Salary structure, pay cycle, payslips and expense reimbursement.", updated: "Apr 01, 2026" },
-];
+const DEFAULT_POLICIES: Policy[] = [];
 
 // ---------- awards / recognition ----------
 
@@ -406,11 +358,7 @@ export function saveAwards(a: Award[]): void {
   write("hr_awards_v1", a);
 }
 export const AWARD_CATEGORIES = ["Star Performer", "Team Player", "Innovation", "Long Service", "Spot Award"];
-const DEFAULT_AWARDS: Award[] = [
-  { id: "aw1", employee: "Aarav Sharma", title: "Counsellor of the Month", category: "Star Performer", note: "Highest admissions conversion in May.", date: "Jun 01, 2026" },
-  { id: "aw2", employee: "Diya Patel", title: "Going the Extra Mile", category: "Team Player", note: "Covered weekend enquiry desk.", date: "May 20, 2026" },
-  { id: "aw3", employee: "Ananya Nair", title: "5 Years of Service", category: "Long Service", note: "Half a decade with the team!", date: "Apr 15, 2026" },
-];
+const DEFAULT_AWARDS: Award[] = [];
 
 // ---------- posts / notices ----------
 
@@ -422,10 +370,7 @@ export function savePosts(p: Post[]): void {
   write("hr_posts_v1", p);
 }
 export const POST_CATEGORIES = ["Notice", "Celebration", "Update", "Reminder"];
-const DEFAULT_POSTS: Post[] = [
-  { id: "po1", title: "Office closed for Diwali", body: "The office will remain closed on Nov 8 for Diwali. Wishing everyone a safe and joyful festival!", category: "Notice", pinned: true, author: "HR Team", date: "Jun 22, 2026" },
-  { id: "po2", title: "Welcome our new counsellors", body: "Please join us in welcoming two new members to the counselling team this month.", category: "Celebration", pinned: false, author: "HR Team", date: "Jun 18, 2026" },
-];
+const DEFAULT_POSTS: Post[] = [];
 
 // ---------- engagement (events & activities) ----------
 
@@ -437,11 +382,7 @@ export function saveEngagement(e: Engagement[]): void {
   write("hr_engagement_v1", e);
 }
 export const ENGAGEMENT_TYPES = ["Team Outing", "Town Hall", "Workshop", "Celebration", "Wellness"];
-const DEFAULT_ENGAGEMENT: Engagement[] = [
-  { id: "en1", title: "Quarterly Town Hall", type: "Town Hall", date: "Jul 04, 2026", location: "Main Hall", going: ["Aarav Sharma", "Diya Patel"] },
-  { id: "en2", title: "Monsoon Team Outing", type: "Team Outing", date: "Jul 19, 2026", location: "Lonavala", going: ["Vivaan Reddy"] },
-  { id: "en3", title: "Mindfulness Wellness Session", type: "Wellness", date: "Jun 30, 2026", location: "Online", going: [] },
-];
+const DEFAULT_ENGAGEMENT: Engagement[] = [];
 
 // ---------- medical (claims & insurance) ----------
 
@@ -455,7 +396,4 @@ export function saveMedical(m: MedicalClaim[]): void {
 }
 export const MEDICAL_TYPES = ["Consultation", "Hospitalisation", "Pharmacy", "Diagnostics", "Dental", "Vision"];
 export const MEDICAL_COVER = 200000; // annual insurance cover per employee
-const DEFAULT_MEDICAL: MedicalClaim[] = [
-  { id: "md1", employee: "Diya Patel", type: "Consultation", amount: 1500, claimDate: "Jun 12, 2026", status: "Approved", note: "GP visit" },
-  { id: "md2", employee: "Vivaan Reddy", type: "Diagnostics", amount: 3200, claimDate: "Jun 19, 2026", status: "Pending", note: "Blood panel" },
-];
+const DEFAULT_MEDICAL: MedicalClaim[] = [];

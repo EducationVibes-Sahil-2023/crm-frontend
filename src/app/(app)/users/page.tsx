@@ -919,15 +919,13 @@ function Pagination({
         </p>
         <label className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">
           Rows:
-          <select
-            value={pageSize}
-            onChange={(e) => setPageSize(Number(e.target.value))}
-            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm outline-none focus:border-blue-500"
-          >
-            {PAGE_SIZES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+          <div className="w-20">
+            <SearchSelect
+              value={String(pageSize)}
+              onChange={(v) => setPageSize(Number(v))}
+              options={PAGE_SIZES.map(String)}
+            />
+          </div>
         </label>
       </div>
 

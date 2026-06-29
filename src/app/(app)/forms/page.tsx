@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/icons";
+import SearchSelect from "@/components/SearchSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import { useToast } from "@/components/Toast";
+import { isStoreReady, STORE_EVENT } from "@/lib/dbStore";
 import { optionNames } from "@/lib/setup";
 import { listDirectory } from "@/lib/directory";
 import {
@@ -79,16 +82,31 @@ export default function FormsPage() {
   const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
-    setForms(loadForms());
-    setIntake(loadIntakeLeads());
-    setNotifs(loadNotifs());
-    setPrefs(loadPrefs());
-    setReady(true);
+    // Load only once the database store has hydrated — otherwise loadForms()
+    // returns an empty cache and the save effect below would overwrite the DB
+    // forms with []. One-shot: stop listening after the first successful load.
+    let loaded = false;
+    const load = () => {
+      if (loaded || !isStoreReady()) return;
+      loaded = true;
+      setForms(loadForms());
+      setIntake(loadIntakeLeads());
+      setNotifs(loadNotifs());
+      setPrefs(loadPrefs());
+      setReady(true);
+      window.removeEventListener(STORE_EVENT, load);
+    };
+    load();
+    if (!loaded) window.addEventListener(STORE_EVENT, load);
     // Live updates: any capture (this tab or another) refreshes the feed + alerts.
-    return subscribeLeads(() => {
+    const unsub = subscribeLeads(() => {
       setIntake(loadIntakeLeads());
       setNotifs(loadNotifs());
     });
+    return () => {
+      window.removeEventListener(STORE_EVENT, load);
+      unsub();
+    };
   }, []);
   useEffect(() => { if (ready) saveForms(forms); }, [forms, ready]);
   useEffect(() => { if (ready) saveNotifs(notifs); }, [notifs, ready]);
@@ -97,6 +115,13 @@ export default function FormsPage() {
   const detail = detailId ? forms.find((f) => f.id === detailId) ?? null : null;
   const unread = notifs.filter((n) => !n.read).length;
   const todayCount = useMemo(() => intake.length, [intake]);
+  // Accurate leads-captured count per form (by formId) — truthful regardless of
+  // how the lead arrived (website / CSV / webhook), not a drift-prone counter.
+  const countByForm = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const l of intake) if (l.formId) m[l.formId] = (m[l.formId] ?? 0) + 1;
+    return m;
+  }, [intake]);
 
   // Capture one lead: applies duplicate rules, auto-assignment and alerts.
   // Returns "ok" or "duplicate" (blocked because duplicates aren't allowed).
@@ -196,7 +221,7 @@ export default function FormsPage() {
       {/* Forms list */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {forms.map((f) => (
-          <FormCard key={f.id} form={f} onOpen={() => setDetailId(f.id)} onSimulate={() => simulate(f, "Website Form")} />
+          <FormCard key={f.id} form={f} count={countByForm[f.id] ?? 0} onOpen={() => setDetailId(f.id)} onSimulate={() => simulate(f, "Website Form")} />
         ))}
       </div>
 
@@ -249,7 +274,7 @@ const CHANNEL_META: { key: "website" | "excel" | "webhook"; label: string; icon:
   { key: "webhook", label: "Webhook", icon: "plug" },
 ];
 
-function FormCard({ form, onOpen, onSimulate }: { form: LeadFormDef; onOpen: () => void; onSimulate: () => void }) {
+function FormCard({ form, count, onOpen, onSimulate }: { form: LeadFormDef; count: number; onOpen: () => void; onSimulate: () => void }) {
   return (
     <div className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
@@ -257,7 +282,7 @@ function FormCard({ form, onOpen, onSimulate }: { form: LeadFormDef; onOpen: () 
           <h3 className="truncate text-base font-semibold text-slate-900 hover:text-blue-700">{form.name}</h3>
           <p className="mt-0.5 line-clamp-1 text-sm text-slate-500">{form.description || `${form.fields.length} fields`}</p>
         </button>
-        <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{form.submissions} leads</span>
+        <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{count} leads</span>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
         {CHANNEL_META.filter((c) => form.channels[c.key]).map((c) => (
@@ -570,10 +595,13 @@ function FormBuilder({ editing, onClose, onSave }: { editing: LeadFormDef | null
                     {autoAssign.mode === "specific" && (
                       <div>
                         <p className="mb-1 text-[11px] text-slate-400">Counsellor</p>
-                        <select value={autoAssign.userEmail} onChange={(e) => setAutoAssign((a) => ({ ...a, userEmail: e.target.value }))} className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm outline-none focus:border-blue-500">
-                          <option value="">Select…</option>
-                          {directory.map((u) => <option key={u.email} value={u.email}>{u.name}</option>)}
-                        </select>
+                        <SearchableSelect
+                          value={autoAssign.userEmail}
+                          onChange={(v) => setAutoAssign((a) => ({ ...a, userEmail: v }))}
+                          options={directory.map((u) => ({ value: u.email, label: u.name }))}
+                          placeholder="Select…"
+                          className="w-full"
+                        />
                       </div>
                     )}
                   </div>
@@ -596,13 +624,21 @@ function FormBuilder({ editing, onClose, onSave }: { editing: LeadFormDef | null
                 {fields.map((f, i) => (
                   <div key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-2">
                     <input value={f.label} onChange={(e) => updateField(i, { label: e.target.value })} placeholder="Label" className="min-w-0 flex-1 rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500" />
-                    <select value={MAPPABLE_KEYS.includes(f.key as typeof MAPPABLE_KEYS[number]) ? f.key : "custom"} onChange={(e) => updateField(i, { key: e.target.value === "custom" ? `custom_${i}` : e.target.value })} className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500" title="Maps to">
-                      {MAPPABLE_KEYS.map((k) => <option key={k} value={k}>{k}</option>)}
-                      <option value="custom">custom</option>
-                    </select>
-                    <select value={f.type} onChange={(e) => updateField(i, { type: e.target.value as FieldType })} className="rounded-md border border-slate-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500">
-                      {FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                    </select>
+                    <div className="w-32">
+                      <SearchSelect
+                        value={MAPPABLE_KEYS.includes(f.key as typeof MAPPABLE_KEYS[number]) ? f.key : "custom"}
+                        onChange={(v) => updateField(i, { key: v === "custom" ? `custom_${i}` : v })}
+                        options={[...MAPPABLE_KEYS, "custom"]}
+                      />
+                    </div>
+                    <div className="w-28">
+                      <SearchSelect
+                        value={f.type}
+                        onChange={(v) => updateField(i, { type: v as FieldType })}
+                        options={FIELD_TYPES}
+                        searchable={false}
+                      />
+                    </div>
                     <label className="flex items-center gap-1 text-xs text-slate-500"><input type="checkbox" checked={f.required} onChange={(e) => updateField(i, { required: e.target.checked })} className="h-3.5 w-3.5 rounded border-slate-300 accent-blue-600" /> req</label>
                     <button type="button" onClick={() => removeField(i)} aria-label="Remove" className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Icon name="close" className="h-4 w-4" /></button>
                   </div>
@@ -693,9 +729,7 @@ function SelectMini({ label, value, options, onChange }: { label: string; value:
   return (
     <div>
       <p className="mb-1 text-[11px] text-slate-400">{label}</p>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded-lg border border-slate-300 px-2 py-2 text-sm outline-none focus:border-blue-500">
-        {(options.length ? options : [value]).map((o) => <option key={o} value={o}>{o}</option>)}
-      </select>
+      <SearchSelect value={value} onChange={onChange} options={options.length ? options : [value]} />
     </div>
   );
 }

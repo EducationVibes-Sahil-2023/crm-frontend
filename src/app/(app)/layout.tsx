@@ -10,7 +10,7 @@ import { PermissionsProvider } from "@/components/PermissionsProvider";
 import RouteGuard from "@/components/RouteGuard";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
-import MobileTabBar from "@/components/MobileTabBar";
+import MobileShell from "@/components/mobile/MobileShell";
 
 const ChatWidget = dynamic(() => import("@/components/ChatWidget"), { ssr: false });
 const AiAssistantWidget = dynamic(() => import("@/components/AiAssistantWidget"), { ssr: false });
@@ -68,7 +68,7 @@ export default function AppLayout({
             </main>
           </div>
 
-          <MobileTabBar onMenu={openDrawer} />
+          <MobileShell onMenu={openDrawer} />
           <AiAssistantWidget />
           <ChatWidget />
         </div>

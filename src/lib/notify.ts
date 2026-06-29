@@ -1,6 +1,8 @@
-// Notifications layer for the app: real browser push (Notification API),
-// simulated email, and a persistent in-app notification center. Local-first so
-// it works without a backend — swap sendEmail() for a real API call later.
+// Notifications layer for the app: browser push (Notification API), simulated
+// email, and a persistent in-app notification center. The in-app log persists
+// to the per-tenant database (app_store via dbStore); device prefs stay local.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type NotifChannel = "push" | "email" | "app";
 
@@ -36,26 +38,15 @@ export function savePrefs(p: NotifPrefs): void {
   window.localStorage.setItem(PREFS_KEY, JSON.stringify(p));
 }
 
-// ---- in-app log ----
+// ---- in-app log (DB-backed via dbStore) ----
 export function loadNotifs(): Notif[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(LOG_KEY);
-    const parsed = raw ? (JSON.parse(raw) as Notif[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = dbGet<Notif[]>(LOG_KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 export function saveNotifs(list: Notif[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(LOG_KEY, JSON.stringify(list.slice(0, 100)));
-    // Let the navbar (and any other listener) refresh live in this tab.
-    window.dispatchEvent(new CustomEvent(NOTIFS_EVENT));
-  } catch {
-    /* ignore */
-  }
+  dbSet(LOG_KEY, list.slice(0, 100));
+  // Let the navbar (and any other listener) refresh live in this tab.
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(NOTIFS_EVENT));
 }
 
 export function unreadCount(list: Notif[]): number {

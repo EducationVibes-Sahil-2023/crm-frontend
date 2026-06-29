@@ -1,7 +1,9 @@
-// Local-first billing module: quotations, invoices and payments. Persists to
-// localStorage so it works without a backend; swap these helpers for `api`
-// calls later. The three documents are cross-linked:
+// Billing module: quotations, invoices and payments. Persisted to the
+// per-tenant database (app_store via dbStore) — no localStorage, no demo seeds.
+// The three documents are cross-linked:
 //   quotation --(convert)--> invoice <--(pays)-- payment
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type LineItem = {
   id: string;
@@ -188,188 +190,20 @@ const QUO_KEY = "nexus_quotations";
 const INV_KEY = "nexus_invoices";
 const PAY_KEY = "nexus_payments";
 
-function li(description: string, quantity: number, unitPrice: number): LineItem {
-  return { id: `li-${description.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, description, quantity, unitPrice };
-}
-
-function seedQuotations(): Quotation[] {
-  return [
-    {
-      id: "q1",
-      number: "QUO-1004",
-      customer: "Acme Corp",
-      customerEmail: "billing@acmecorp.com",
-      items: [li("Enterprise plan — annual", 1, 240000), li("Onboarding & setup", 1, 35000)],
-      discountPct: 10,
-      taxPct: 18,
-      status: "sent",
-      issueDate: dateOffset(-3),
-      expiryDate: dateOffset(12),
-      notes: "Valid for 15 days. Includes priority support.",
-      convertedInvoiceId: null,
-      createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-    },
-    {
-      id: "q2",
-      number: "QUO-1003",
-      customer: "Globex Ltd",
-      customerEmail: "accounts@globex.io",
-      items: [li("Pro plan — 25 seats", 25, 1200), li("Data migration", 1, 18000)],
-      discountPct: 0,
-      taxPct: 18,
-      status: "accepted",
-      issueDate: dateOffset(-10),
-      expiryDate: dateOffset(5),
-      notes: "",
-      convertedInvoiceId: "i1",
-      createdAt: new Date(Date.now() - 10 * 86400000).toISOString(),
-    },
-    {
-      id: "q3",
-      number: "QUO-1002",
-      customer: "Nimbus Co",
-      customerEmail: "hello@nimbus.co",
-      items: [li("Starter plan — annual", 1, 60000)],
-      discountPct: 5,
-      taxPct: 18,
-      status: "draft",
-      issueDate: dateOffset(-1),
-      expiryDate: dateOffset(14),
-      notes: "",
-      convertedInvoiceId: null,
-      createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-    },
-    {
-      id: "q4",
-      number: "QUO-1001",
-      customer: "BrightPath",
-      customerEmail: "meera@brightpath.in",
-      items: [li("Consulting — 40 hrs", 40, 2500)],
-      discountPct: 0,
-      taxPct: 18,
-      status: "rejected",
-      issueDate: dateOffset(-30),
-      expiryDate: dateOffset(-15),
-      notes: "",
-      convertedInvoiceId: null,
-      createdAt: new Date(Date.now() - 30 * 86400000).toISOString(),
-    },
-  ];
-}
-
-function seedInvoices(): Invoice[] {
-  return [
-    {
-      id: "i1",
-      number: "INV-2003",
-      customer: "Globex Ltd",
-      customerEmail: "accounts@globex.io",
-      items: [li("Pro plan — 25 seats", 25, 1200), li("Data migration", 1, 18000)],
-      discountPct: 0,
-      taxPct: 18,
-      status: "sent",
-      issueDate: dateOffset(-9),
-      dueDate: dateOffset(6),
-      notes: "Net 15. Bank transfer preferred.",
-      quotationId: "q2",
-      createdAt: new Date(Date.now() - 9 * 86400000).toISOString(),
-    },
-    {
-      id: "i2",
-      number: "INV-2002",
-      customer: "Acme Corp",
-      customerEmail: "billing@acmecorp.com",
-      items: [li("Enterprise plan — annual", 1, 240000)],
-      discountPct: 0,
-      taxPct: 18,
-      status: "sent",
-      issueDate: dateOffset(-40),
-      dueDate: dateOffset(-10),
-      notes: "",
-      quotationId: null,
-      createdAt: new Date(Date.now() - 40 * 86400000).toISOString(),
-    },
-    {
-      id: "i3",
-      number: "INV-2001",
-      customer: "Stark Industries",
-      customerEmail: "ap@stark.com",
-      items: [li("Custom integration", 1, 150000), li("Annual support", 1, 45000)],
-      discountPct: 5,
-      taxPct: 18,
-      status: "sent",
-      issueDate: dateOffset(-20),
-      dueDate: dateOffset(10),
-      notes: "",
-      quotationId: null,
-      createdAt: new Date(Date.now() - 20 * 86400000).toISOString(),
-    },
-  ];
-}
-
-function seedPayments(): Payment[] {
-  return [
-    {
-      id: "p1",
-      number: "PAY-3002",
-      invoiceId: "i3",
-      invoiceNumber: "INV-2001",
-      customer: "Stark Industries",
-      amount: 100000,
-      method: "bank",
-      status: "completed",
-      date: dateOffset(-5),
-      reference: "NEFT-88231",
-      notes: "Part payment",
-      createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-    },
-    {
-      id: "p2",
-      number: "PAY-3001",
-      invoiceId: "i2",
-      invoiceNumber: "INV-2002",
-      customer: "Acme Corp",
-      amount: 283200,
-      method: "card",
-      status: "completed",
-      date: dateOffset(-38),
-      reference: "ch_1Nxxxx",
-      notes: "",
-      createdAt: new Date(Date.now() - 38 * 86400000).toISOString(),
-    },
-  ];
-}
-
-function load<T>(key: string, seed: () => T[]): T[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
-      const seeded = seed();
-      window.localStorage.setItem(key, JSON.stringify(seeded));
-      return seeded;
-    }
-    const parsed = JSON.parse(raw) as T[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function load<T>(key: string): T[] {
+  const parsed = dbGet<T[]>(key, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function save<T>(key: string, list: T[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, JSON.stringify(list));
-  } catch {
-    /* ignore quota errors */
-  }
+  dbSet(key, list);
 }
 
-export const loadQuotations = () => load<Quotation>(QUO_KEY, seedQuotations);
+export const loadQuotations = () => load<Quotation>(QUO_KEY);
 export const saveQuotations = (l: Quotation[]) => save(QUO_KEY, l);
-export const loadInvoices = () => load<Invoice>(INV_KEY, seedInvoices);
+export const loadInvoices = () => load<Invoice>(INV_KEY);
 export const saveInvoices = (l: Invoice[]) => save(INV_KEY, l);
-export const loadPayments = () => load<Payment>(PAY_KEY, seedPayments);
+export const loadPayments = () => load<Payment>(PAY_KEY);
 export const savePayments = (l: Payment[]) => save(PAY_KEY, l);
 
 function nextNumber(list: { number: string }[], prefix: string, start: number): string {

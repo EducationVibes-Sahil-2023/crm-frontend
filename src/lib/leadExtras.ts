@@ -1,5 +1,7 @@
 // Per-lead notes, reminders, activity timeline, transfers, and lead visitor requests.
-// Client-side / localStorage, consistent with the rest of the dashboard.
+// Persisted to the per-tenant database (app_store via dbStore) — no localStorage.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type LeadNote = { id: string; leadId: string; text: string; by: string; at: string };
 export type LeadReminder = { id: string; leadId: string; title: string; due: string; done: boolean; by: string; at: string };
@@ -26,18 +28,12 @@ export type VisitorRequest = {
 
 export const VISITOR_TYPES = ["Walk-in", "Scheduled Visit", "Field Visit", "Product Demo", "Document Collection", "Site Inspection"];
 
+// Per-tenant DB-backed (app_store via dbStore) — no localStorage, no seeds.
 function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  return dbGet<T>(key, fallback);
 }
 function write<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  dbSet<T>(key, value);
 }
 function nowStamp(): string {
   return new Date().toLocaleString("en-US", { month: "short", day: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -156,7 +152,4 @@ function truncate(s: string, n = 40): string {
   return s.length > n ? s.slice(0, n) + "…" : s;
 }
 
-const DEFAULT_VISITOR_REQUESTS: VisitorRequest[] = [
-  { id: "vr-seed1", leadName: "Aarav Sharma", dateOfVisit: "2026-06-26T11:00", location: "Mumbai HQ", visitorType: "Scheduled Visit", attendee: "Diya Patel", address: "Bandra Kurla Complex, Mumbai", purpose: "Campus tour and admission counselling", requestedBy: "Aarav Sharma", status: "Approved", at: "Jun 20, 2026, 10:15 AM" },
-  { id: "vr-seed2", leadName: "Ananya Nair", dateOfVisit: "2026-06-28T15:30", location: "Bengaluru Center", visitorType: "Product Demo", attendee: "Vivaan Reddy", address: "Koramangala, Bengaluru", purpose: "Demo of online learning platform", requestedBy: "Vivaan Reddy", status: "Pending", at: "Jun 21, 2026, 02:40 PM" },
-];
+const DEFAULT_VISITOR_REQUESTS: VisitorRequest[] = [];

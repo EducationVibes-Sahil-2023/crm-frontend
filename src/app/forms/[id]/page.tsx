@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import SearchSelect from "@/components/SearchSelect";
 import { loadForms, pickAssignee, saveForms, type FormField, type LeadFormDef } from "@/lib/forms";
 import { captureLead, findDuplicate, makeIntakeLead } from "@/lib/leadStore";
 import { listDirectory } from "@/lib/directory";
@@ -135,10 +136,7 @@ function PublicField({ field, value, error, onChange }: { field: FormField; valu
       {field.type === "textarea" ? (
         <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={3} className={`${cls} resize-none`} />
       ) : field.type === "select" ? (
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={cls}>
-          <option value="">Select…</option>
-          {(field.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
-        </select>
+        <SearchSelect value={value} onChange={onChange} options={field.options ?? []} placeholder="Select…" error={error} />
       ) : (
         <input type={field.type === "email" ? "email" : field.type === "phone" ? "tel" : "text"} value={value} onChange={(e) => onChange(e.target.value)} className={cls} />
       )}

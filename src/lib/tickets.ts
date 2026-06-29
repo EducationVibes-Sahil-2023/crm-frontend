@@ -2,6 +2,7 @@
 // fully usable without a backend; swap these helpers for `api` calls later.
 
 import type { IconName } from "@/components/icons";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type TicketStatus = "open" | "in_progress" | "on_hold" | "resolved" | "closed";
 // Category and priority are admin-managed (see Admin Setup → Support Setup),
@@ -57,7 +58,9 @@ export type Ticket = {
   events: TicketEvent[];
 };
 
-export const AGENTS = ["Aarav Mehta", "Priya Sharma", "Rohan Verma", "Sara Khan"];
+// Support agents are real team members; no demo names. (UI can populate
+// assignee options from the team directory.)
+export const AGENTS: string[] = [];
 
 export const STATUS_META: Record<
   TicketStatus,
@@ -125,165 +128,20 @@ export function fullTime(iso: string): string {
   });
 }
 
-function mins(n: number): number {
-  return n * 60_000;
-}
-
-function seed(): Ticket[] {
-  const now = Date.now();
-  const at = (offset: number) => new Date(now - offset).toISOString();
-
-  const tickets: Ticket[] = [
-    {
-      id: "t1",
-      number: "TKT-1042",
-      subject: "Export downloads an empty CSV file",
-      description:
-        "<p>When I click <strong>Export</strong> on the Leads page, the browser downloads a CSV with only the header row — all the data rows are missing. Happens on Chrome and Edge.</p>",
-      requester: "Priya Sharma",
-      requesterEmail: "priya@acmecorp.com",
-      assignee: "Aarav Mehta",
-      status: "in_progress",
-      priority: "High",
-      category: "Bug",
-      tags: ["export", "leads"],
-      attachments: [],
-      createdAt: at(mins(180)),
-      updatedAt: at(mins(12)),
-      events: [
-        { id: "e1", at: at(mins(180)), type: "created", by: "Priya Sharma" },
-        { id: "e2", at: at(mins(150)), type: "assignment", by: "System", to: "Aarav Mehta" },
-        { id: "e3", at: at(mins(140)), type: "status", by: "Aarav Mehta", from: "open", to: "in_progress" },
-        {
-          id: "e4",
-          at: at(mins(12)),
-          type: "comment",
-          by: "Aarav Mehta",
-          message: "<p>Reproduced it — the export filter is being applied twice. Pushing a fix today.</p>",
-        },
-      ],
-    },
-    {
-      id: "t2",
-      number: "TKT-1041",
-      subject: "Invoice charged twice this month",
-      description: "<p>Our card was charged <strong>two times</strong> for the May subscription. Please refund the duplicate.</p>",
-      requester: "Sara Khan",
-      requesterEmail: "sara@globex.io",
-      assignee: "Priya Sharma",
-      status: "open",
-      priority: "Urgent",
-      category: "Billing",
-      tags: ["payment", "refund"],
-      attachments: [],
-      createdAt: at(mins(95)),
-      updatedAt: at(mins(95)),
-      events: [{ id: "e5", at: at(mins(95)), type: "created", by: "Sara Khan" }],
-    },
-    {
-      id: "t3",
-      number: "TKT-1040",
-      subject: "Add dark mode to the dashboard",
-      description: "<p>Would love a dark theme for late-night work. The white background is hard on the eyes.</p>",
-      requester: "Vikram Nair",
-      requesterEmail: "vikram@nimbus.co",
-      assignee: null,
-      status: "on_hold",
-      priority: "Low",
-      category: "Feature Request",
-      tags: ["ui", "theme"],
-      attachments: [],
-      createdAt: at(mins(60 * 26)),
-      updatedAt: at(mins(60 * 5)),
-      events: [
-        { id: "e6", at: at(mins(60 * 26)), type: "created", by: "Vikram Nair" },
-        { id: "e7", at: at(mins(60 * 5)), type: "status", by: "Sara Khan", from: "open", to: "on_hold" },
-      ],
-    },
-    {
-      id: "t4",
-      number: "TKT-1039",
-      subject: "Cannot reset my password",
-      description: "<p>The reset link in the email returns a 'token expired' error even when I click it immediately.</p>",
-      requester: "Rahul Bose",
-      requesterEmail: "rahul@example.com",
-      assignee: "Rohan Verma",
-      status: "resolved",
-      priority: "Medium",
-      category: "Technical",
-      tags: ["auth"],
-      attachments: [],
-      createdAt: at(mins(60 * 50)),
-      updatedAt: at(mins(60 * 30)),
-      events: [
-        { id: "e8", at: at(mins(60 * 50)), type: "created", by: "Rahul Bose" },
-        { id: "e9", at: at(mins(60 * 48)), type: "assignment", by: "System", to: "Rohan Verma" },
-        { id: "e10", at: at(mins(60 * 40)), type: "status", by: "Rohan Verma", from: "open", to: "in_progress" },
-        {
-          id: "e11",
-          at: at(mins(60 * 30)),
-          type: "comment",
-          by: "Rohan Verma",
-          message: "<p>Extended the token TTL to 30 minutes. Please try again — should be sorted now.</p>",
-        },
-        { id: "e12", at: at(mins(60 * 30)), type: "status", by: "Rohan Verma", from: "in_progress", to: "resolved" },
-      ],
-    },
-    {
-      id: "t5",
-      number: "TKT-1038",
-      subject: "Onboarding call no-show",
-      description: "<p>We missed our scheduled onboarding call. Can we reschedule for next week?</p>",
-      requester: "Meera Iyer",
-      requesterEmail: "meera@brightpath.in",
-      assignee: "Aarav Mehta",
-      status: "closed",
-      priority: "Low",
-      category: "General",
-      tags: ["onboarding"],
-      attachments: [],
-      createdAt: at(mins(60 * 96)),
-      updatedAt: at(mins(60 * 72)),
-      events: [
-        { id: "e13", at: at(mins(60 * 96)), type: "created", by: "Meera Iyer" },
-        { id: "e14", at: at(mins(60 * 80)), type: "status", by: "Aarav Mehta", from: "open", to: "resolved" },
-        { id: "e15", at: at(mins(60 * 72)), type: "status", by: "Aarav Mehta", from: "resolved", to: "closed" },
-      ],
-    },
-  ];
-  return tickets;
-}
-
 export function loadTickets(): Ticket[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      const seeded = seed();
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seeded));
-      return seeded;
-    }
-    const parsed = JSON.parse(raw) as Ticket[];
-    if (!Array.isArray(parsed)) return [];
-    // Normalise tickets saved before array fields existed so consumers can
-    // safely read `.length` / `.map` on them.
-    return parsed.map((t) => ({
-      ...t,
-      attachments: Array.isArray(t.attachments) ? t.attachments : [],
-      events: Array.isArray(t.events) ? t.events : [],
-    }));
-  } catch {
-    return [];
-  }
+  const parsed = dbGet<Ticket[]>(STORAGE_KEY, []);
+  if (!Array.isArray(parsed)) return [];
+  // Normalise tickets saved before array fields existed so consumers can
+  // safely read `.length` / `.map` on them.
+  return parsed.map((t) => ({
+    ...t,
+    attachments: Array.isArray(t.attachments) ? t.attachments : [],
+    events: Array.isArray(t.events) ? t.events : [],
+  }));
 }
 
 export function saveTickets(list: Ticket[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    /* ignore quota errors */
-  }
+  dbSet(STORAGE_KEY, list);
 }
 
 // Next ticket number based on the current max.

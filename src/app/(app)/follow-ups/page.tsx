@@ -2,10 +2,11 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Icon, type IconName } from "@/components/icons";
+import SearchSelect from "@/components/SearchSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import { useToast } from "@/components/Toast";
 import { getUser } from "@/lib/auth";
 import { isStoreReady, STORE_EVENT } from "@/lib/dbStore";
-import { allReminders, deleteReminder, toggleReminder, type LeadReminder } from "@/lib/leadExtras";
 import {
   AGING, COMPLETION_SPLIT, COUNSELLORS, CREATED_LEAST, DEPARTMENTS, FU_KPIS, GHOSTED,
   LEAD_SOURCES, LEAD_STATUSES, LOCATIONS, MISSED_TOP, PENDING_SPLIT, STATUS_VOLUME,
@@ -28,7 +29,6 @@ export default function FollowUpsPage() {
   const toast = useToast();
   const me = useMemo(() => getUser(), []);
   const [followups, setFollowups] = useState<FollowUp[]>([]);
-  const [reminders, setReminders] = useState<LeadReminder[]>([]);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("dashboard");
   const [editing, setEditing] = useState<FollowUp | null>(null);
@@ -43,7 +43,6 @@ export default function FollowUpsPage() {
       if (loaded || !isStoreReady()) return;
       loaded = true;
       setFollowups(loadFollowUps());
-      setReminders(allReminders());
       setReady(true);
       window.removeEventListener(STORE_EVENT, load);
     };
@@ -53,10 +52,10 @@ export default function FollowUpsPage() {
   }, []);
   useEffect(() => { if (ready) saveFollowUps(followups); }, [followups, ready]);
 
+  // Only real follow-ups fetched from the database — no localStorage merge.
   const items = useMemo<Item[]>(() => [
     ...followups.map((f): Item => ({ key: `f-${f.id}`, source: "followup", id: f.id, title: f.title, contact: f.contact, phone: f.phone, due: f.due, priority: f.priority, category: f.category, status: f.status, notes: f.notes })),
-    ...reminders.map((r): Item => ({ key: `r-${r.id}`, source: "reminder", id: r.id, title: r.title, contact: "", phone: "", due: r.due, priority: "medium", category: "Reminder", status: r.done ? "done" : "pending", notes: "" })),
-  ], [followups, reminders]);
+  ], [followups]);
 
   const counts = useMemo(() => {
     const pending = items.filter((i) => i.status === "pending");
@@ -69,8 +68,7 @@ export default function FollowUpsPage() {
   }, [items]);
 
   function complete(item: Item) {
-    if (item.source === "followup") setFollowups((l) => l.map((f) => (f.id === item.id ? { ...f, status: f.status === "done" ? "pending" : "done" } : f)));
-    else { toggleReminder(item.id); setReminders(allReminders()); }
+    setFollowups((l) => l.map((f) => (f.id === item.id ? { ...f, status: f.status === "done" ? "pending" : "done" } : f)));
   }
   function doSnooze(item: Item, days: number) {
     if (item.source !== "followup") return;
@@ -78,8 +76,7 @@ export default function FollowUpsPage() {
     toast.info("Snoozed", days === 1 ? "Moved to tomorrow" : `Moved ${days} days ahead`);
   }
   function remove(item: Item) {
-    if (item.source === "followup") setFollowups((l) => l.filter((f) => f.id !== item.id));
-    else { deleteReminder(item.id); setReminders(allReminders()); }
+    setFollowups((l) => l.filter((f) => f.id !== item.id));
     toast.info("Removed", "Follow-up deleted.");
   }
   function save(f: FollowUp) {
@@ -160,7 +157,9 @@ function FilterBar() {
 const FB = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
 function FBField({ label, children }: { label: string; children: ReactNode }) { return <div><label className="mb-1 block text-[11px] font-medium text-slate-500">{label}</label>{children}</div>; }
 function FBSelect({ label, options }: { label: string; options: string[] }) {
-  return <FBField label={label}><select className={FB}>{options.map((o) => <option key={o}>{o}</option>)}</select></FBField>;
+  const [placeholder, ...rest] = options;
+  const [value, setValue] = useState("");
+  return <FBField label={label}><SearchSelect value={value} onChange={setValue} options={rest} placeholder={placeholder} /></FBField>;
 }
 
 /* ---------------- Dashboard tab ---------------- */
@@ -488,9 +487,9 @@ function FollowUpModal({ editing, by, onClose, onSave }: { editing: FollowUp | n
           </div>
           <div className="grid grid-cols-2 gap-3">
             <L label="Due date & time"><input type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} className={cls} /></L>
-            <L label="Priority"><select value={priority} onChange={(e) => setPriority(e.target.value as FollowUpPriority)} className={cls}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></L>
+            <L label="Priority"><SearchableSelect value={priority} onChange={(v) => setPriority(v as FollowUpPriority)} options={[{ value: "high", label: "High" }, { value: "medium", label: "Medium" }, { value: "low", label: "Low" }]} className="w-full" /></L>
           </div>
-          <L label="Type"><select value={category} onChange={(e) => setCategory(e.target.value as FollowUpCategory)} className={cls}>{FOLLOWUP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select></L>
+          <L label="Type"><SearchSelect value={category} onChange={(v) => setCategory(v as FollowUpCategory)} options={[...FOLLOWUP_CATEGORIES]} /></L>
           <L label="Notes"><textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} className={`${cls} resize-none`} placeholder="Anything to remember…" /></L>
         </div>
         <div className="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">

@@ -5,6 +5,8 @@ import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchSelect from "@/components/SearchSelect";
+import SearchableSelect from "@/components/SearchableSelect";
 import { AUTOMATIONS, PLATFORM_FEATURES, ALL_FEATURE_KEYS, loadPlatform, refreshPlatform, rid, savePlatform, type PlatformConfig, type PlatformPlan, type Review } from "@/lib/platform";
 import { readLogo } from "@/lib/branding";
 import { createGmailClient } from "@/lib/gmailApi";
@@ -264,7 +266,7 @@ export default function PlatformSettings() {
           <Grid>
             <Field label="Key ID"><Input value={cfg.payment.keyId} onChange={(v) => setPayment("keyId", v)} placeholder="rzp_live_…" /></Field>
             <Field label="Key Secret"><Secret value={cfg.payment.keySecret} onChange={(v) => setPayment("keySecret", v)} placeholder="••••••••" /></Field>
-            <Field label="Currency"><select value={cfg.payment.currency} onChange={(e) => setPayment("currency", e.target.value)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500">{["INR", "USD", "EUR", "GBP", "AED"].map((c) => <option key={c}>{c}</option>)}</select></Field>
+            <Field label="Currency"><SearchSelect value={cfg.payment.currency} onChange={(v) => setPayment("currency", v)} options={["INR", "USD", "EUR", "GBP", "AED"]} /></Field>
             <Field label="Webhook URL"><Input value={cfg.payment.webhookUrl} onChange={(v) => setPayment("webhookUrl", v)} /></Field>
           </Grid>
           <button onClick={() => toast[cfg.payment.keyId ? "success" : "error"](cfg.payment.keyId ? "Razorpay ready" : "Add a Key ID", cfg.payment.keyId ? "Test checkout would open." : "Enter your Razorpay Key ID first.")} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Test checkout</button>
@@ -348,7 +350,7 @@ function ReviewsTab({ reviews, onChange }: { reviews: Review[]; onChange: (r: Re
             <div className="flex flex-wrap items-center gap-2">
               <input value={r.name} onChange={(e) => upd(r.id, { name: e.target.value })} placeholder="Name" className="min-w-32 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium outline-none focus:border-blue-500" />
               <input value={r.role} onChange={(e) => upd(r.id, { role: e.target.value })} placeholder="Role, Company" className="min-w-40 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />
-              <select value={r.rating} onChange={(e) => upd(r.id, { rating: Number(e.target.value) })} className="rounded-lg border border-slate-300 px-2 py-2 text-sm outline-none focus:border-blue-500">{[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} ★</option>)}</select>
+              <SearchableSelect value={String(r.rating)} onChange={(v) => upd(r.id, { rating: Number(v) })} options={[5, 4, 3, 2, 1].map((n) => ({ value: String(n), label: `${n} ★` }))} className="w-28" />
               <button onClick={() => onChange(reviews.filter((x) => x.id !== r.id))} className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600"><Icon name="trash" className="h-4 w-4" /></button>
             </div>
             <textarea value={r.text} onChange={(e) => upd(r.id, { text: e.target.value })} rows={2} placeholder="Review text" className="mt-2 w-full resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-blue-500" />

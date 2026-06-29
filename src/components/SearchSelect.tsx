@@ -16,6 +16,7 @@ export default function SearchSelect({
   setRef,
   error,
   searchable = true,
+  disabled = false,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -25,6 +26,7 @@ export default function SearchSelect({
   setRef?: (name: string) => (el: HTMLElement | null) => void;
   error?: string;
   searchable?: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -40,8 +42,9 @@ export default function SearchSelect({
       <button
         ref={name && setRef ? setRef(name) : undefined}
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${
+        className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm outline-none transition focus:ring-2 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500 ${
           error ? "border-rose-400 focus:border-rose-500 focus:ring-rose-500/20" : "border-slate-300 focus:border-blue-500 focus:ring-blue-500/20"
         }`}
       >

@@ -115,6 +115,7 @@ export type ServerClient = {
   users: number;
   exists: boolean;
   createdAt: string | null;
+  lastLoginAt: string | null; // last real client login (not impersonation)
 };
 
 type TenantsList = { databases: { database: string; users: number }[]; clients: ServerClient[]; count: number };
@@ -149,6 +150,10 @@ export function serverClientToTenant(s: ServerClient): Tenant {
     users: s.users,
     storageGb: s.storageGb ?? 0,
     createdAt: s.createdAt ? new Date(s.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
-    lastActive: "—",
+    // Last time the client signed in themselves (super-admin impersonation
+    // doesn't count). "—" until they've logged in at least once.
+    lastActive: s.lastLoginAt
+      ? new Date(s.lastLoginAt.replace(" ", "T")).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+      : "—",
   };
 }

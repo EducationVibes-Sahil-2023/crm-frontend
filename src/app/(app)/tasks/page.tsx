@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon, type IconName } from "@/components/icons";
+import SearchableSelect from "@/components/SearchableSelect";
 import { useToast } from "@/components/Toast";
+import MobileTasks from "@/components/mobile/MobileTasks";
 import { getUser } from "@/lib/auth";
 import { findUser, initialsOf, listDirectory } from "@/lib/directory";
 import { COLORS, colorBadge, colorDot } from "@/lib/setup";
@@ -215,7 +217,12 @@ export default function TasksPage() {
   const detail = detailId ? tasks.find((t) => t.id === detailId) ?? null : null;
 
   return (
-    <div className="space-y-6">
+    <>
+      {/* Phones: card-feed task list. Desktop keeps the board / list views. */}
+      <div className="lg:hidden">
+        <MobileTasks />
+      </div>
+      <div className="hidden space-y-6 lg:block">
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white shadow-sm sm:p-8">
         <div className="absolute inset-0 opacity-20 [background:radial-gradient(circle_at_15%_20%,white,transparent_45%),radial-gradient(circle_at_85%_90%,white,transparent_40%)]" />
@@ -313,6 +320,7 @@ export default function TasksPage() {
         />
       )}
     </div>
+    </>
   );
 }
 
@@ -328,11 +336,7 @@ function Stat({ label, value, highlight }: { label: string; value: number | stri
 }
 
 function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
-  return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-  );
+  return <SearchableSelect value={value} onChange={onChange} options={options} className="w-44" />;
 }
 
 function ViewBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: IconName; label: string }) {
@@ -458,7 +462,7 @@ function ListView({ tasks, priorities, onOpen, onMove }: { tasks: Task[]; priori
         </thead>
         <tbody>
           {tasks.map((t) => {
-            const s = statusMeta(t.status); const p = priorityMeta(priorities, t.priority);
+            const p = priorityMeta(priorities, t.priority);
             return (
               <tr key={t.id} onClick={() => onOpen(t.id)} className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 <td className="px-4 py-3">
@@ -466,9 +470,11 @@ function ListView({ tasks, priorities, onOpen, onMove }: { tasks: Task[]; priori
                   {t.tags.length > 0 && <p className="mt-0.5 text-xs text-slate-400">{t.tags.join(" · ")}</p>}
                 </td>
                 <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                  <select value={t.status} onChange={(e) => onMove(t.id, e.target.value as TaskStatus)} className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold outline-none ${s.chip}`}>
-                    {STATUSES.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={t.status}
+                    onChange={(v) => onMove(t.id, v as TaskStatus)}
+                    options={STATUSES.map((o) => ({ value: o.key, label: o.label }))}
+                  />
                 </td>
                 <td className="px-3 py-3"><span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${p.chip}`}><span className={`h-1.5 w-1.5 rounded-full ${p.dot}`} />{p.name}</span></td>
                 <td className="px-3 py-3"><Avatars emails={t.assigneeEmails} /></td>
@@ -519,9 +525,7 @@ function Composer({ editing, priorities, onClose, onSave }: {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-500">Status</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20">
-                {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
-              </select>
+              <SearchableSelect value={status} onChange={(v) => setStatus(v as TaskStatus)} options={STATUSES.map((s) => ({ value: s.key, label: s.label }))} className="w-full" />
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-500">Due date</label>
@@ -644,14 +648,10 @@ function DetailDrawer({ task, priorities, onClose, onEdit, onDelete, onStatus, o
 
             <div className="grid grid-cols-2 gap-4">
               <Prop label="Status">
-                <select value={task.status} onChange={(e) => onStatus(e.target.value as TaskStatus)} className={`w-full rounded-lg border-0 px-2.5 py-1.5 text-xs font-semibold outline-none ring-1 ring-slate-200 ${s.chip}`}>
-                  {STATUSES.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-                </select>
+                <SearchableSelect value={task.status} onChange={(v) => onStatus(v as TaskStatus)} options={STATUSES.map((o) => ({ value: o.key, label: o.label }))} className="w-full" />
               </Prop>
               <Prop label="Priority">
-                <select value={task.priority} onChange={(e) => onPriority(e.target.value as TaskPriority)} className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none">
-                  {priorities.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-                </select>
+                <SearchableSelect value={task.priority} onChange={(v) => onPriority(v as TaskPriority)} options={priorities.map((o) => ({ value: o.id, label: o.name }))} className="w-full" />
               </Prop>
               <Prop label="Due date">
                 <input type="date" value={task.dueDate} onChange={(e) => onDue(e.target.value)} className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 outline-none" />

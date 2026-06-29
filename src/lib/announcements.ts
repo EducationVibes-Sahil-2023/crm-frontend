@@ -1,8 +1,9 @@
-// Local-first announcements store. Persists to localStorage so the module is
-// fully usable without a backend; swap these helpers for `api` calls later.
+// Announcements store. Persisted to the per-tenant database (app_store via
+// dbStore) — no localStorage, no seeded demo announcements.
 
 import { colorBadge, colorDot } from "@/lib/setup";
 import { countInDepartments, findUser, listDirectory, type DirectoryUser } from "@/lib/directory";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 // ---- Categories (admin-managed, dynamic) ------------------------------------
 
@@ -25,27 +26,12 @@ const DEFAULT_CATEGORIES: Category[] = [
 ];
 
 export function loadCategories(): Category[] {
-  if (typeof window === "undefined") return DEFAULT_CATEGORIES;
-  try {
-    const raw = window.localStorage.getItem(CATEGORY_KEY);
-    if (!raw) {
-      window.localStorage.setItem(CATEGORY_KEY, JSON.stringify(DEFAULT_CATEGORIES));
-      return DEFAULT_CATEGORIES;
-    }
-    const parsed = JSON.parse(raw) as Category[];
-    return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_CATEGORIES;
-  } catch {
-    return DEFAULT_CATEGORIES;
-  }
+  const parsed = dbGet<Category[]>(CATEGORY_KEY, DEFAULT_CATEGORIES);
+  return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_CATEGORIES;
 }
 
 export function saveCategories(list: Category[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(CATEGORY_KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  dbSet(CATEGORY_KEY, list);
 }
 
 export function categoryStyle(categories: Category[], id: string) {
@@ -158,54 +144,6 @@ export type Announcement = {
 
 const KEY = "nexus_announcements_v2";
 
-const SEED: Announcement[] = [
-  {
-    id: "seed-1",
-    title: "Q3 All-Hands: Thursday 4 PM",
-    body: "<p>Join us in the main hall (or via the calendar link) for the quarterly review. We'll cover:</p><ul><li>Revenue &amp; the new pipeline targets</li><li>A live demo of the <strong>redesigned dashboard</strong></li></ul><p>Snacks provided! 🎉</p>",
-    categoryId: "event",
-    author: "People Team",
-    authorEmail: "admin@nexus.com",
-    pinned: true,
-    createdAt: "2026-06-22T09:00:00.000Z",
-    attachments: [],
-    audience: { kind: "everyone" },
-    reads: {},
-    likes: [],
-    comments: [],
-  },
-  {
-    id: "seed-2",
-    title: "New: Sidebar collapse & dense leads table",
-    body: "<p>The CRM just shipped a <strong>collapsible sidebar</strong> and a faster, denser leads table with a sticky header. Hit the menu icon to toggle the rail.</p><p>Feedback welcome in #product.</p>",
-    categoryId: "product",
-    author: "Product",
-    authorEmail: "admin@nexus.com",
-    pinned: false,
-    createdAt: "2026-06-20T13:30:00.000Z",
-    attachments: [],
-    audience: { kind: "custom", departments: ["Counsellor"], userEmails: [] },
-    reads: {},
-    likes: [],
-    comments: [],
-  },
-  {
-    id: "seed-3",
-    title: "Updated leave policy effective July 1",
-    body: "<p>Carry-over of unused leave is now capped at <strong>10 days</strong>. Please review the full policy in the Knowledge Base and reach out to HR with any questions before the end of the month.</p>",
-    categoryId: "policy",
-    author: "HR",
-    authorEmail: "admin@nexus.com",
-    pinned: false,
-    createdAt: "2026-06-18T08:00:00.000Z",
-    attachments: [],
-    audience: { kind: "everyone" },
-    reads: {},
-    likes: [],
-    comments: [],
-  },
-];
-
 function normalize(a: Partial<Announcement>): Announcement {
   return {
     id: a.id ?? `a-${Math.random().toString(36).slice(2)}`,
@@ -225,28 +163,12 @@ function normalize(a: Partial<Announcement>): Announcement {
 }
 
 export function loadAnnouncements(): Announcement[] {
-  if (typeof window === "undefined") return SEED;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) {
-      window.localStorage.setItem(KEY, JSON.stringify(SEED));
-      return SEED;
-    }
-    const parsed = JSON.parse(raw) as Announcement[];
-    if (!Array.isArray(parsed)) return SEED;
-    return parsed.map(normalize);
-  } catch {
-    return SEED;
-  }
+  const parsed = dbGet<Announcement[]>(KEY, []);
+  return Array.isArray(parsed) ? parsed.map(normalize) : [];
 }
 
 export function saveAnnouncements(list: Announcement[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore quota / serialization errors */
-  }
+  dbSet(KEY, list);
 }
 
 // ---- Misc helpers -----------------------------------------------------------

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
+import SearchSelect from "@/components/SearchSelect";
 import { loadPolicies, savePolicies, type Policy } from "@/lib/hr";
 
 const CAT_STYLE: Record<string, string> = {
@@ -51,7 +52,7 @@ export default function PoliciesPage() {
         <form onSubmit={add} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Policy title" className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 sm:col-span-2" />
-            <select value={category} onChange={(e) => setCategory(e.target.value)} className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500"><option>Leave</option><option>Attendance</option><option>Payroll</option><option>Compliance</option></select>
+            <SearchSelect value={category} onChange={setCategory} options={["Leave", "Attendance", "Payroll", "Compliance"]} />
             <textarea value={summary} onChange={(e) => setSummary(e.target.value)} rows={2} placeholder="Short summary…" className="resize-none rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 sm:col-span-3" />
           </div>
           <div className="mt-3 flex justify-end gap-2"><button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button><button type="submit" className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">Publish</button></div>

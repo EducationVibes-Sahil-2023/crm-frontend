@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Icon, type IconName } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchSelect from "@/components/SearchSelect";
 import { getUser } from "@/lib/auth";
 import {
   assetsApi,
@@ -605,29 +606,21 @@ export default function AssetManagementPage() {
                 <input className={inputCls} value="Auto-generated (AST-####)" disabled readOnly />
               </Field>
               <Field label="Category">
-                <select
-                  className={inputCls}
+                <SearchSelect
                   value={createForm.category ?? ""}
-                  onChange={(e) => setCreateForm((f) => ({ ...f, category: e.target.value }))}
-                >
-                  <option value="">Select category…</option>
-                  {assetCategories.map((c) => (
-                    <option key={c}>{c}</option>
-                  ))}
-                </select>
+                  onChange={(v) => setCreateForm((f) => ({ ...f, category: v }))}
+                  options={assetCategories}
+                  placeholder="Select category…"
+                />
               </Field>
             </div>
             <Field label="Vendor / supplier">
-              <select
-                className={inputCls}
+              <SearchSelect
                 value={createForm.vendor ?? ""}
-                onChange={(e) => setCreateForm((f) => ({ ...f, vendor: e.target.value }))}
-              >
-                <option value="">Select vendor…</option>
-                {vendors.map((v) => (
-                  <option key={v}>{v}</option>
-                ))}
-              </select>
+                onChange={(v) => setCreateForm((f) => ({ ...f, vendor: v }))}
+                options={vendors}
+                placeholder="Select vendor…"
+              />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Assign to (name)"><input className={inputCls} value={createForm.owner_name ?? ""} onChange={(e) => setCreateForm((f) => ({ ...f, owner_name: e.target.value }))} placeholder="Asha Sharma" /></Field>
@@ -860,26 +853,17 @@ function DetailDrawer({
               <Field label="Asset name" required><input className={inputCls} disabled={fieldDisabled} value={draft.name ?? ""} onChange={(e) => onField("name", e.target.value)} /></Field>
               <Field label="Asset tag"><input className={inputCls} value={draft.tag || "Auto-assigned"} disabled readOnly title="System-generated — cannot be edited" /></Field>
               <Field label="Category">
-                <select className={inputCls} disabled={fieldDisabled} value={draft.category ?? ""} onChange={(e) => onField("category", e.target.value)}>
-                  <option value="">Select…</option>
-                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <SearchSelect disabled={fieldDisabled} value={draft.category ?? ""} onChange={(v) => onField("category", v)} options={categories} placeholder="Select…" />
               </Field>
               <Field label="Condition">
-                <select className={inputCls} disabled={fieldDisabled} value={draft.condition ?? ""} onChange={(e) => onField("condition", e.target.value)}>
-                  <option value="">Select…</option>
-                  {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                <SearchSelect disabled={fieldDisabled} value={draft.condition ?? ""} onChange={(v) => onField("condition", v)} options={CONDITIONS} placeholder="Select…" />
               </Field>
               <Field label="Serial number"><input className={inputCls} disabled={fieldDisabled} value={draft.serial_number ?? ""} onChange={(e) => onField("serial_number", e.target.value)} /></Field>
               <Field label="Manufacturer"><input className={inputCls} disabled={fieldDisabled} value={draft.manufacturer ?? ""} onChange={(e) => onField("manufacturer", e.target.value)} /></Field>
               <Field label="Model"><input className={inputCls} disabled={fieldDisabled} value={draft.model ?? ""} onChange={(e) => onField("model", e.target.value)} /></Field>
               <Field label="Location"><input className={inputCls} disabled={fieldDisabled} value={draft.location ?? ""} onChange={(e) => onField("location", e.target.value)} /></Field>
               <Field label="Vendor / supplier">
-                <select className={inputCls} disabled={fieldDisabled} value={draft.vendor ?? ""} onChange={(e) => onField("vendor", e.target.value)}>
-                  <option value="">Select…</option>
-                  {vendors.map((v) => <option key={v} value={v}>{v}</option>)}
-                </select>
+                <SearchSelect disabled={fieldDisabled} value={draft.vendor ?? ""} onChange={(v) => onField("vendor", v)} options={vendors} placeholder="Select…" />
               </Field>
             </Grid>
             <Field label="Description" className="mt-3">

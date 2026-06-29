@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
+import SearchSelect from "@/components/SearchSelect";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import {
@@ -11,6 +12,7 @@ import {
   dayKey,
   loadActivities,
   relativeTime,
+  subscribeActivities,
   type Activity,
   type ActivityCategory,
 } from "@/lib/activity";
@@ -26,11 +28,17 @@ export default function ActivityLogsPage() {
   const [query, setQuery] = useState("");
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      setItems(loadActivities());
+    setItems(loadActivities());
+    const t = setTimeout(() => setLoading(false), 600);
+    // Stay live as new activity is logged anywhere in the app.
+    const unsub = subscribeActivities(() => {
+      setItems([...loadActivities()]);
       setLoading(false);
-    }, 600);
-    return () => clearTimeout(t);
+    });
+    return () => {
+      clearTimeout(t);
+      unsub();
+    };
   }, []);
 
   const users = useMemo(() => ["All Users", ...activityUsers(items)], [items]);
@@ -111,15 +119,7 @@ export default function ActivityLogsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-600">User</label>
-            <select
-              value={user}
-              onChange={(e) => setUser(e.target.value)}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
-            >
-              {users.map((u) => (
-                <option key={u}>{u}</option>
-              ))}
-            </select>
+            <SearchSelect value={user} onChange={setUser} options={users} />
           </div>
           <div className="sm:col-span-2">
             <label className="mb-1.5 block text-sm font-medium text-slate-600">Search</label>

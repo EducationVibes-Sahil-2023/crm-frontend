@@ -14,7 +14,15 @@ import { optionNames } from "@/lib/setup";
 import { STATE_NAMES, allCities, citiesOf } from "@/lib/places";
 import { logActivity } from "@/lib/activity";
 import { logLeadActivity } from "@/lib/leadExtras";
-import { loadIntakeLeads, subscribeLeads } from "@/lib/leadStore";
+import {
+  loadIntakeLeads,
+  subscribeLeads,
+  captureLead,
+  updateLead,
+  removeLead,
+  restoreLead,
+  type IntakeLead,
+} from "@/lib/leadStore";
 import { usePermissions } from "@/components/PermissionsProvider";
 import {
   LEAD_FIELDS,
@@ -208,14 +216,16 @@ export default function LeadsPage() {
     // Show only real leads from the backend (intake/Forms channels). The empty
     // workspace starts with no leads instead of demo rows.
     const merge = () => setLeads([...(loadIntakeLeads() as unknown as Lead[])]);
-    const t = setTimeout(() => {
+    merge();
+    const t = setTimeout(() => setLoading(false), 900);
+    const unsub = subscribeLeads((reason) => {
       merge();
       setLoading(false);
-    }, 900);
-    const unsub = subscribeLeads(() => {
-      merge();
-      const latest = loadIntakeLeads()[0];
-      if (latest) toast.info("New lead captured", `${latest.name} via ${latest.channel}`);
+      // Only an externally-captured lead (Forms/landing/visitor) gets a toast.
+      if (reason === "capture") {
+        const latest = loadIntakeLeads()[0];
+        if (latest) toast.info("New lead captured", `${latest.name} via ${latest.channel}`);
+      }
     });
     return () => {
       clearTimeout(t);
@@ -297,7 +307,8 @@ export default function LeadsPage() {
   }
 
   function handleCreate(lead: Lead) {
-    setLeads((prev) => [lead, ...prev]);
+    // Persist to the leads table; the store broadcast refreshes the list.
+    captureLead(lead as unknown as IntakeLead, { reason: "mutate" });
     setPage(1);
     setFormOpen(false);
     toast.success("Lead created", `${lead.name} was added to your leads.`);
@@ -307,13 +318,13 @@ export default function LeadsPage() {
 
   function handleReassign(lead: Lead, toName: string) {
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, assignedTo: toName, assignationDate: today, updatedDate: today, lastUpdated: "just now" } : l)));
+    updateLead(lead.id, { assignedTo: toName, assignationDate: today });
     setViewLead((v) => (v && v.id === lead.id ? { ...v, assignedTo: toName } : v));
     logActivity(`Assigned lead "${lead.name}" to ${toName}`, { category: "lead", target: toName });
   }
 
   function handleUpdate(updated: Lead) {
-    setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+    updateLead(updated.id, updated as unknown as Partial<IntakeLead>);
     setEditLead(null);
     toast.success("Lead updated", `${updated.name}'s details were saved.`);
     logActivity(`Edited lead "${updated.name}"`, { category: "lead", target: updated.company });
@@ -322,14 +333,13 @@ export default function LeadsPage() {
 
   // Quick in-modal patch (e.g. status change) — keeps list + open modal in sync.
   function handleLeadPatch(lead: Lead, patch: Partial<Lead>) {
-    const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, ...patch, updatedDate: today, lastUpdated: "just now" } : l)));
+    updateLead(lead.id, patch as unknown as Partial<IntakeLead>);
     setViewLead((v) => (v && v.id === lead.id ? { ...v, ...patch } : v));
   }
 
   // Soft delete — flag the record, keep it for restore.
   function handleDelete(lead: Lead) {
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, deleted: true } : l)));
+    removeLead(lead.id);
     setConfirmDelete(null);
     setViewLead((v) => (v?.id === lead.id ? null : v));
     toast.success("Lead deleted", `${lead.name} was moved to deleted leads.`);
@@ -337,7 +347,7 @@ export default function LeadsPage() {
   }
 
   function handleRestore(lead: Lead) {
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, deleted: false } : l)));
+    restoreLead(lead.id);
     toast.success("Lead restored", `${lead.name} was restored.`);
     logActivity(`Restored lead "${lead.name}"`, { category: "lead", target: lead.company });
   }
@@ -530,11 +540,14 @@ export default function LeadsPage() {
             </p>
             <label className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">
               Rows:
-              <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm outline-none focus:border-blue-500">
-                {Array.from(new Set([pageSize, ...PAGE_SIZES])).sort((a, b) => a - b).map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              <div className="w-20">
+                <SearchSelect
+                  value={String(pageSize)}
+                  onChange={(v) => setPageSize(Number(v))}
+                  options={Array.from(new Set([pageSize, ...PAGE_SIZES])).sort((a, b) => a - b).map((s) => String(s))}
+                  searchable={false}
+                />
+              </div>
             </label>
           </div>
 

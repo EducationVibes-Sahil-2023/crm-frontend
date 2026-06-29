@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchSelect from "@/components/SearchSelect";
 import { getUser } from "@/lib/auth";
 import { Field, HrEmpty, HrFooter, HrHero, HrModal, inputCls } from "@/components/HrUi";
 import { POST_CATEGORIES, loadPosts, savePosts, type Post } from "@/lib/hr";
@@ -77,7 +78,7 @@ function PostModal({ onClose, onSave }: { onClose: () => void; onSave: (p: Omit<
       <form onSubmit={submit}>
         <div className="space-y-4 px-6 py-6">
           <Field label="Title"><input autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Office closed for Diwali" className={inputCls} /></Field>
-          <Field label="Category"><select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>{POST_CATEGORIES.map((c) => <option key={c}>{c}</option>)}</select></Field>
+          <Field label="Category"><SearchSelect value={category} onChange={setCategory} options={[...POST_CATEGORIES]} /></Field>
           <Field label="Message"><textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} className={`${inputCls} resize-none`} placeholder="Write the notice…" /></Field>
           <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-blue-600" /> Pin to top</label>
         </div>

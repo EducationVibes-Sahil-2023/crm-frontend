@@ -33,7 +33,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (text ? JSON.parse(text) : null) as T;
 }
 
+// Raw lead row as returned by the backend `leads` table (snake_case). Mapping
+// to/from the camelCase IntakeLead used across the app lives in lib/leadStore.
+export type LeadRow = {
+  id: string;
+  custom?: Record<string, string> | Record<string, never>;
+  [k: string]: unknown;
+};
+
 export const api = {
   health: () => request<{ status: string; database: string }>("/health"),
   listTasks: () => request<Task[]>("/tasks"),
+
+  // ---- Leads (normalised `leads` table via /api/leads) ----
+  listLeads: (params?: Record<string, string | number>) => {
+    const qs = params
+      ? "?" + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])).toString()
+      : "";
+    return request<{ leads: LeadRow[] }>(`/leads${qs}`).then((r) => r.leads);
+  },
+  createLead: (data: Record<string, unknown>) =>
+    request<{ lead: LeadRow }>("/leads", { method: "POST", body: JSON.stringify(data) }).then((r) => r.lead),
+  updateLead: (id: string, data: Record<string, unknown>) =>
+    request<{ lead: LeadRow }>(`/leads/${id}`, { method: "PUT", body: JSON.stringify(data) }).then((r) => r.lead),
+  deleteLead: (id: string) => request<{ id: number }>(`/leads/${id}`, { method: "DELETE" }),
 };

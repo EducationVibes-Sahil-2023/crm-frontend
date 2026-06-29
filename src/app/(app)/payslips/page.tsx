@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchableSelect from "@/components/SearchableSelect";
+import MobilePayslips from "@/components/mobile/MobilePayslips";
 import {
   formatMoney,
   generatePayslips,
@@ -71,7 +73,12 @@ export default function PayslipsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <>
+    {/* Phones: card-based payslip app. Desktop keeps the full table. */}
+    <div className="lg:hidden">
+      <MobilePayslips />
+    </div>
+    <div className="hidden space-y-6 lg:block">
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white shadow-sm sm:p-8">
         <div className="absolute inset-0 opacity-20 [background:radial-gradient(circle_at_15%_20%,white,transparent_45%),radial-gradient(circle_at_85%_90%,white,transparent_40%)]" />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
@@ -80,9 +87,8 @@ export default function PayslipsPage() {
             <div><h1 className="text-2xl font-bold">Payslips</h1><p className="mt-1 text-sm text-blue-100">Generate, credit and download monthly payslips.</p></div>
           </div>
           <div className="flex items-center gap-2">
-            <select value={month} onChange={(e) => setMonth(e.target.value)} className="rounded-lg bg-white/10 px-3 py-2.5 text-sm font-semibold text-white ring-1 ring-white/25 backdrop-blur [&>option]:text-slate-800">
-              {months.map((mk) => <option key={mk} value={mk}>{monthLabel(mk)}</option>)}
-            </select>
+            <SearchableSelect value={month} onChange={setMonth} options={months.map((mk) => ({ value: mk, label: monthLabel(mk) }))} className="w-40" />
+
             <button onClick={generate} className="flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-50"><Icon name="refresh" className="h-4 w-4" /> Generate</button>
           </div>
         </div>
@@ -132,6 +138,7 @@ export default function PayslipsPage() {
 
       {detail && <SlipModal slip={detail} onClose={() => setDetail(null)} onDownload={() => download(detail)} />}
     </div>
+    </>
   );
 }
 

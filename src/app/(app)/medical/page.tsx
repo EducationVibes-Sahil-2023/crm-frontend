@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { Field, HrFooter, HrHero, HrModal, inputCls } from "@/components/HrUi";
+import SearchSelect from "@/components/SearchSelect";
 import { MEDICAL_COVER, MEDICAL_TYPES, formatMoney, listEmployees, loadMedical, saveMedical, type MedicalClaim, type MedicalStatus } from "@/lib/hr";
 
 const STATUS_STYLE: Record<MedicalStatus, string> = {
@@ -97,9 +98,9 @@ function ClaimModal({ employees, onClose, onSave }: { employees: string[]; onClo
     <HrModal title="New Medical Claim" onClose={onClose}>
       <form onSubmit={submit}>
         <div className="space-y-4 px-6 py-6">
-          <Field label="Employee"><select value={employee} onChange={(e) => setEmployee(e.target.value)} className={inputCls}>{employees.map((n) => <option key={n}>{n}</option>)}</select></Field>
+          <Field label="Employee"><SearchSelect value={employee} onChange={setEmployee} options={employees} placeholder="Select employee" /></Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Type"><select value={type} onChange={(e) => setType(e.target.value)} className={inputCls}>{MEDICAL_TYPES.map((t) => <option key={t}>{t}</option>)}</select></Field>
+            <Field label="Type"><SearchSelect value={type} onChange={setType} options={MEDICAL_TYPES} /></Field>
             <Field label="Amount (₹)"><input type="number" min={0} value={amount} onChange={(e) => setAmount(Number(e.target.value))} className={inputCls} /></Field>
           </div>
           <Field label="Note"><input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Description / hospital" className={inputCls} /></Field>

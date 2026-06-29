@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
+import SearchableSelect from "@/components/SearchableSelect";
 import {
   effectiveStatus,
   fmtDate,
@@ -368,9 +369,12 @@ function Composer({ editing, nextNumber, onClose, onSave }: {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Invoice #"><input value={number} onChange={(e) => setNumber(e.target.value)} className={inputCls} /></Field>
             <Field label="Status">
-              <select value={status} onChange={(e) => setStatus(e.target.value as InvoiceStatus)} className={inputCls}>
-                {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS_META[s].label}</option>)}
-              </select>
+              <SearchableSelect
+                value={status}
+                onChange={(v) => setStatus(v as InvoiceStatus)}
+                options={STATUS_ORDER.map((s) => ({ value: s, label: STATUS_META[s].label }))}
+                className="w-full"
+              />
             </Field>
             <Field label="Client" required><input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Acme Corp" className={inputCls} /></Field>
             <Field label="Client email"><input value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="billing@acme.com" className={inputCls} /></Field>

@@ -12,13 +12,22 @@ export default function KnowledgeBasePage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return DOCS;
-    return DOCS.filter(
-      (d) =>
-        d.title.toLowerCase().includes(q) ||
-        d.summary.toLowerCase().includes(q) ||
-        d.intro.toLowerCase().includes(q) ||
-        d.steps.some((s) => s.toLowerCase().includes(q)),
-    );
+    return DOCS.filter((d) => {
+      const haystack = [
+        d.title,
+        d.summary,
+        d.intro,
+        d.audience ?? "",
+        d.whatItDoes ?? "",
+        ...d.steps,
+        ...(d.features ?? []),
+        ...(d.tips ?? []),
+        ...(d.faqs?.flatMap((f) => [f.q, f.a]) ?? []),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(q);
+    });
   }, [query]);
 
   const active = DOCS.find((d) => d.id === activeId) ?? filtered[0] ?? DOCS[0];
@@ -115,10 +124,36 @@ export default function KnowledgeBasePage() {
               <div>
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{active.category}</span>
                 <h2 className="text-xl font-bold text-slate-900">{active.title}</h2>
+                {active.audience && (
+                  <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
+                    <Icon name="users" className="h-3 w-3" /> {active.audience}
+                  </span>
+                )}
               </div>
             </div>
 
             <p className="mt-5 text-sm leading-relaxed text-slate-600">{active.intro}</p>
+
+            {active.whatItDoes && (
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-slate-400">What it does</p>
+                <p className="text-sm leading-relaxed text-slate-600">{active.whatItDoes}</p>
+              </div>
+            )}
+
+            {active.features && active.features.length > 0 && (
+              <>
+                <h3 className="mt-7 text-sm font-bold uppercase tracking-wide text-slate-400">Key features</h3>
+                <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {active.features.map((f, i) => (
+                    <li key={i} className="flex items-start gap-2 rounded-lg border border-slate-100 bg-white p-2.5 text-sm text-slate-700">
+                      <Icon name="check" className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                      <span className="leading-snug">{f}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
 
             <h3 className="mt-7 text-sm font-bold uppercase tracking-wide text-slate-400">How to use it</h3>
             <ol className="mt-3 space-y-3">
@@ -145,6 +180,20 @@ export default function KnowledgeBasePage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {active.faqs && active.faqs.length > 0 && (
+              <div className="mt-7">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-400">FAQ</h3>
+                <div className="mt-3 space-y-3">
+                  {active.faqs.map((f, i) => (
+                    <div key={i} className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-sm font-semibold text-slate-800">{f.q}</p>
+                      <p className="mt-1 text-sm leading-relaxed text-slate-600">{f.a}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

@@ -12,6 +12,7 @@ import { startTrial, TRIAL_DAYS } from "@/lib/trial";
 import { addDemo } from "@/lib/demos";
 import Reveal from "@/components/Reveal";
 import CountUp from "@/components/CountUp";
+import SearchSelect from "@/components/SearchSelect";
 import RotatingWord from "@/components/RotatingWord";
 import { usePlatform } from "@/lib/platform";
 
@@ -567,9 +568,7 @@ function HeroForm({ onSubmit }: { onSubmit: (lead: LeadFields & { users?: string
           {errors.phone && <p className="mt-1 text-xs font-medium text-red-600">{errors.phone}</p>}
         </div>
       </div>
-      <select value={form.users} onChange={(e) => set("users", e.target.value)} className={f}>
-        {USER_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
-      </select>
+      <SearchSelect value={form.users} onChange={(v) => set("users", v)} options={USER_OPTIONS} searchable={false} />
       <button type="submit" className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 py-3 text-sm font-bold text-white shadow-lg shadow-blue-600/25 transition hover:shadow-xl active:scale-[0.99]">
         Book my free demo
       </button>
