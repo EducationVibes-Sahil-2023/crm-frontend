@@ -281,7 +281,10 @@ export default function LoginPage() {
                     <div className="relative">
                       <input
                         type="email"
-                        autoComplete="email"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                         autoFocus
                         value={resetEmail}
                         onChange={(e) => {
@@ -320,7 +323,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} noValidate className="mt-7 space-y-5">
+          <form onSubmit={handleSubmit} noValidate autoComplete="off" className="mt-7 space-y-5">
             {/* Email */}
             <div>
               <label
@@ -333,7 +336,10 @@ export default function LoginPage() {
                 <input
                   id="email"
                   type="email"
-                  autoComplete="email"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   aria-invalid={!!errors.email}
                   value={email}
                   onChange={(e) => {
@@ -370,7 +376,7 @@ export default function LoginPage() {
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   aria-invalid={!!errors.password}
                   value={password}
                   onChange={(e) => {

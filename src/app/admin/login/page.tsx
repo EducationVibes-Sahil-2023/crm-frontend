@@ -62,13 +62,13 @@ export default function AdminLoginPage() {
           <label className="mb-1.5 block text-xs font-semibold text-slate-600">Email</label>
           <div className="relative mb-4">
             <Icon name="gmail" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="superadmin@…" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false} placeholder="superadmin@…" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
           </div>
 
           <label className="mb-1.5 block text-xs font-semibold text-slate-600">Password</label>
           <div className="relative mb-5">
             <Icon name="shield" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input value={password} onChange={(e) => setPassword(e.target.value)} type={show ? "text" : "password"} placeholder="••••••••" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-10 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
+            <input value={password} onChange={(e) => setPassword(e.target.value)} type={show ? "text" : "password"} autoComplete="new-password" placeholder="••••••••" className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-10 text-sm text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20" />
             <button type="button" onClick={() => setShow((s) => !s)} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-slate-400 hover:text-slate-700" aria-label="Toggle password"><Icon name="eye" className="h-4 w-4" /></button>
           </div>
 
