@@ -5,27 +5,61 @@
 // permission, registers with the OS push service, and sends the resulting
 // device token to the backend (/push/device) so the server can target it.
 //
+// IMPORTANT: this module intentionally does NOT import the
+// `@capacitor/push-notifications` npm package. That package is native-only and
+// may be absent from a web-only production install, which would break `next
+// build` (type-check + bundling). Instead we obtain the plugin through
+// Capacitor's bridge via registerPlugin() from `@capacitor/core` (a hard
+// dependency that is always installed). On the native shell this connects to the
+// real native implementation that `cap sync` wires into the Android/iOS project;
+// on the web we never reach this code (isNativePlatform() is false).
+//
 // Delivery requires a Firebase project: drop google-services.json into
 // android/app/ (and configure APNs for iOS). See MOBILE.md.
 
 import { apiRequest } from "@/lib/api";
+
+// ── Minimal local typings for the native PushNotifications plugin ──────────
+// Declared here so the web build never depends on the plugin's package types.
+type PermissionState = "prompt" | "prompt-with-rationale" | "denied" | "granted";
+interface PermissionStatus {
+  receive: PermissionState;
+}
+interface PluginListenerHandle {
+  remove: () => Promise<void>;
+}
+interface DeviceToken {
+  value: string;
+}
+interface PushAction {
+  notification?: { data?: { url?: string } };
+}
+interface PushNotificationsPlugin {
+  checkPermissions(): Promise<PermissionStatus>;
+  requestPermissions(): Promise<PermissionStatus>;
+  register(): Promise<void>;
+  addListener(event: "registration", cb: (token: DeviceToken) => void): Promise<PluginListenerHandle>;
+  addListener(event: "registrationError", cb: (err: unknown) => void): Promise<PluginListenerHandle>;
+  addListener(event: "pushNotificationActionPerformed", cb: (action: PushAction) => void): Promise<PluginListenerHandle>;
+}
 
 let started = false;
 
 export async function initNativePush(): Promise<void> {
   if (started) return;
 
-  // Dynamically import so web builds never pull native plugin code and the web
-  // bundle stays unaffected.
-  let Capacitor: typeof import("@capacitor/core").Capacitor;
-  let PushNotifications: typeof import("@capacitor/push-notifications").PushNotifications;
+  // Dynamically import Capacitor core so plain web builds stay unaffected.
+  let core: typeof import("@capacitor/core");
   try {
-    ({ Capacitor } = await import("@capacitor/core"));
-    if (!Capacitor.isNativePlatform()) return; // web / PWA — use lib/push.ts instead
-    ({ PushNotifications } = await import("@capacitor/push-notifications"));
+    core = await import("@capacitor/core");
   } catch {
-    return; // plugin unavailable
+    return; // Capacitor unavailable (plain web) — no-op.
   }
+  const { Capacitor, registerPlugin } = core;
+  if (!Capacitor.isNativePlatform()) return; // web / PWA — use lib/push.ts instead.
+
+  // Obtain the plugin through the native bridge (no npm-package import needed).
+  const PushNotifications = registerPlugin<PushNotificationsPlugin>("PushNotifications");
 
   started = true;
   const platform = Capacitor.getPlatform(); // "ios" | "android"
