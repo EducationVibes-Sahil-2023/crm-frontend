@@ -8,15 +8,13 @@ import { useToast } from "@/components/Toast";
 import { getUser } from "@/lib/auth";
 import { isStoreReady, STORE_EVENT } from "@/lib/dbStore";
 import {
-  AGING, COMPLETION_SPLIT, COUNSELLORS, CREATED_LEAST, DEPARTMENTS, FU_KPIS, GHOSTED,
-  LEAD_SOURCES, LEAD_STATUSES, LOCATIONS, MISSED_TOP, PENDING_SPLIT, STATUS_VOLUME,
-  type CounsellorRow, type SplitRow,
-} from "@/lib/followupAnalytics";
-import {
   BUCKET_META, bucketOf, digits, dueLabel, FOLLOWUP_CATEGORIES, loadFollowUps,
   PRIORITY_META, relativeDue, saveFollowUps, snooze,
   type Bucket, type FollowUp, type FollowUpCategory, type FollowUpPriority,
 } from "@/lib/followups";
+
+const PRIORITIES: FollowUpPriority[] = ["high", "medium", "low"];
+type Filter = { category: string; priority: string; status: string; date: string };
 
 type Tab = "dashboard" | "queue" | "overdue" | "future" | "completed";
 type Source = "followup" | "reminder";
@@ -33,6 +31,7 @@ export default function FollowUpsPage() {
   const [tab, setTab] = useState<Tab>("dashboard");
   const [editing, setEditing] = useState<FollowUp | null>(null);
   const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState<Filter>({ category: "", priority: "", status: "", date: "" });
 
   // Load once the database store has hydrated (so we read real saved rows, not
   // an empty cache). One-shot: we stop listening after the first load so the
@@ -66,6 +65,15 @@ export default function FollowUpsPage() {
       completed: items.filter((i) => i.status === "done").length,
     };
   }, [items]);
+
+  // Apply the (real) filter bar to the list. Metrics on the Dashboard always
+  // reflect ALL follow-ups; only the list tabs respect the filter.
+  const filteredItems = useMemo(() => items.filter((i) =>
+    (!filter.category || i.category === filter.category) &&
+    (!filter.priority || i.priority === filter.priority) &&
+    (!filter.status || i.status === filter.status) &&
+    (!filter.date || (i.due || "").slice(0, 10) === filter.date),
+  ), [items, filter]);
 
   function complete(item: Item) {
     setFollowups((l) => l.map((f) => (f.id === item.id ? { ...f, status: f.status === "done" ? "pending" : "done" } : f)));
@@ -102,7 +110,7 @@ export default function FollowUpsPage() {
         <button onClick={() => { setEditing(null); setOpen(true); }} className="ml-auto flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"><Icon name="plus" className="h-4 w-4" /> New Follow-up</button>
       </div>
 
-      <FilterBar />
+      {tab !== "dashboard" && <FilterBar filter={filter} onChange={setFilter} />}
 
       {/* Sub-tabs */}
       <div className="flex flex-wrap items-center gap-1 border-b border-slate-200">
@@ -115,13 +123,17 @@ export default function FollowUpsPage() {
       </div>
 
       {tab === "dashboard" ? (
-        <DashboardTab />
+        !ready ? (
+          <div className="h-64 animate-pulse rounded-2xl border border-slate-200 bg-white shadow-sm" />
+        ) : (
+          <DashboardTab items={items} />
+        )
       ) : !ready ? (
         <div className="h-64 animate-pulse rounded-2xl border border-slate-200 bg-white shadow-sm" />
       ) : (
         <ListTab
           tab={tab}
-          items={items}
+          items={filteredItems}
           onComplete={complete}
           onSnooze={doSnooze}
           onEdit={(id) => { const f = followups.find((x) => x.id === id); if (f) { setEditing(f); setOpen(true); } }}
@@ -134,79 +146,93 @@ export default function FollowUpsPage() {
   );
 }
 
-/* ---------------- Filter bar ---------------- */
-function FilterBar() {
-  const toast = useToast();
+/* ---------------- Filter bar (real follow-up fields, wired to the list) ---------------- */
+function FilterBar({ filter, onChange }: { filter: Filter; onChange: (f: Filter) => void }) {
+  const set = (patch: Partial<Filter>) => onChange({ ...filter, ...patch });
+  const active = !!(filter.category || filter.priority || filter.status || filter.date);
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-7">
-        <FBField label="Follow-up Date"><input type="date" className={FB} /></FBField>
-        <FBSelect label="Lead Sources" options={["Lead Source", ...LEAD_SOURCES]} />
-        <FBSelect label="Lead Status" options={["Lead Status", ...LEAD_STATUSES]} />
-        <FBSelect label="Department" options={["Department", ...DEPARTMENTS]} />
-        <FBSelect label="Office Location" options={["Location", ...LOCATIONS]} />
-        <FBSelect label="Assign" options={["Assign", ...COUNSELLORS.map((c) => c.name)]} />
-        <div className="flex items-end gap-2">
-          <button onClick={() => toast.success("Filters applied", "Showing matching follow-ups")} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700">Apply</button>
-          <button onClick={() => toast.info("Refreshed", "Data reloaded")} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><Icon name="refresh" className="h-4 w-4" /></button>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+        <FBField label="Follow-up Date"><input type="date" value={filter.date} onChange={(e) => set({ date: e.target.value })} className={FB} /></FBField>
+        <FBField label="Category">
+          <select value={filter.category} onChange={(e) => set({ category: e.target.value })} className={FB}>
+            <option value="">All categories</option>
+            {FOLLOWUP_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </FBField>
+        <FBField label="Priority">
+          <select value={filter.priority} onChange={(e) => set({ priority: e.target.value })} className={FB}>
+            <option value="">All priorities</option>
+            {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
+          </select>
+        </FBField>
+        <FBField label="Status">
+          <select value={filter.status} onChange={(e) => set({ status: e.target.value })} className={FB}>
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="done">Completed</option>
+          </select>
+        </FBField>
+        <div className="flex items-end">
+          <button onClick={() => onChange({ category: "", priority: "", status: "", date: "" })} disabled={!active} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50">Clear filters</button>
         </div>
       </div>
     </div>
   );
 }
-const FB = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
+const FB = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20";
 function FBField({ label, children }: { label: string; children: ReactNode }) { return <div><label className="mb-1 block text-[11px] font-medium text-slate-500">{label}</label>{children}</div>; }
-function FBSelect({ label, options }: { label: string; options: string[] }) {
-  const [placeholder, ...rest] = options;
-  const [value, setValue] = useState("");
-  return <FBField label={label}><SearchSelect value={value} onChange={setValue} options={rest} placeholder={placeholder} /></FBField>;
-}
 
-/* ---------------- Dashboard tab ---------------- */
-function DashboardTab() {
-  const k = FU_KPIS;
+/* ---------------- Dashboard tab (computed from real follow-ups) ---------------- */
+function DashboardTab({ items }: { items: Item[] }) {
+  const m = useMemo(() => {
+    const total = items.length;
+    const done = items.filter((i) => i.status === "done").length;
+    const pending = items.filter((i) => i.status === "pending");
+    const overdue = pending.filter((i) => bucketOf(i.due) === "overdue").length;
+    const dueToday = pending.filter((i) => bucketOf(i.due) === "today").length;
+    const future = pending.filter((i) => ["tomorrow", "week", "later"].includes(bucketOf(i.due))).length;
+    const byCategory = FOLLOWUP_CATEGORIES
+      .map((c) => ({ name: c, count: items.filter((i) => i.category === c).length }))
+      .filter((r) => r.count > 0);
+    const byPriority = PRIORITIES
+      .map((p) => ({ name: PRIORITY_META[p].label, count: items.filter((i) => i.priority === p).length }))
+      .filter((r) => r.count > 0);
+    return { total, done, pending: pending.length, overdue, dueToday, future, donePct: total ? Math.round((done / total) * 100) : 0, byCategory, byPriority };
+  }, [items]);
+
+  if (m.total === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600"><Icon name="star" className="h-7 w-7" /></span>
+        <h2 className="mt-4 text-lg font-bold text-slate-900">No follow-ups yet</h2>
+        <p className="mx-auto mt-1.5 max-w-sm text-sm text-slate-500">Create your first follow-up and your live metrics will appear here — all from your database.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
-      {/* overdue alert */}
-      <div className="flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-600"><Icon name="clock" className="h-5 w-5" /></span>
-        <div>
-          <p className="text-sm font-semibold text-rose-700">{fmt(k.overdue)} follow-ups are overdue right now</p>
-          <p className="text-xs text-rose-500">Prospect: {k.overdueBreak.prospect} · Funnel: {k.overdueBreak.funnel} · Callback: {k.overdueBreak.callback}</p>
+      {m.overdue > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-rose-100 text-rose-600"><Icon name="clock" className="h-5 w-5" /></span>
+          <p className="text-sm font-semibold text-rose-700">{fmt(m.overdue)} follow-up{m.overdue === 1 ? " is" : "s are"} overdue right now</p>
         </div>
-      </div>
+      )}
 
-      {/* KPI grid */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Kpi border="border-t-rose-500" title="Total Due" value={fmt(k.totalDue)} sub="Across all counsellors" />
-        <Kpi border="border-t-emerald-500" title="Completed" value={fmt(k.completed)} sub={`of ${k.scheduled} scheduled`} badge={`${k.donePct}% done`} badgeTone="bg-emerald-100 text-emerald-700" />
-        <Kpi border="border-t-rose-500" title="Overdue Till Now" value={fmt(k.overdue)} sub="Not actioned yet" badge="▲ Critical" badgeTone="bg-rose-100 text-rose-700" />
-        <Kpi border="border-t-blue-500" title="Prospect Pending" value={fmt(k.prospectPending)} sub="Customer: 0 · Warm Lead: 87 · Hot Lead: 10" />
-        <Kpi border="border-t-blue-500" title="Funnel Pending" value={fmt(k.funnelPending)} sub="Cold Lead: 67 · Future Intake: 2" />
-        <Kpi border="border-t-amber-500" title="Callback Pending" value={fmt(k.callbackPending)} sub="Fresh Lead: 12 · Not Reachable: 10" />
-        <Kpi border="border-t-rose-500" title="Team Completion Rate" value={`${k.teamRate}%`} sub={`Target: ${k.teamTarget}%`} badge="▼ Below target" badgeTone="bg-rose-100 text-rose-700" />
-        <Kpi border="border-t-slate-400" title="Ghosted / No Response" value={fmt(k.ghosted)} sub="3+ attempts, no reply" badge="Review needed" badgeTone="bg-slate-100 text-slate-600" />
-        <Kpi border="border-t-indigo-500" title="Future Follow-ups" value={fmt(k.future)} sub="Scheduled ahead" />
-      </div>
-
-      <CounsellorTable />
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <VolumeChart />
-        <AgingChart />
+        <Kpi border="border-t-blue-500" title="Total Follow-ups" value={fmt(m.total)} sub="All time" />
+        <Kpi border="border-t-amber-500" title="Pending" value={fmt(m.pending)} sub="Not completed yet" />
+        <Kpi border="border-t-rose-500" title="Overdue" value={fmt(m.overdue)} sub="Past their due date" badge={m.overdue ? "Action needed" : undefined} badgeTone="bg-rose-100 text-rose-700" />
+        <Kpi border="border-t-amber-500" title="Due Today" value={fmt(m.dueToday)} sub="Scheduled for today" />
+        <Kpi border="border-t-indigo-500" title="Future" value={fmt(m.future)} sub="Scheduled ahead" />
+        <Kpi border="border-t-emerald-500" title="Completed" value={fmt(m.done)} sub={`of ${fmt(m.total)} total`} badge={`${m.donePct}% done`} badgeTone="bg-emerald-100 text-emerald-700" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <BarList title="Missed Follow-ups — Top 5 most missed" rows={MISSED_TOP} tone="bg-rose-500" badge="High" badgeTone="bg-rose-100 text-rose-700" />
-        <BarList title="Least 5 — created follow-ups" rows={CREATED_LEAST} tone="bg-emerald-500" badge="Low" badgeTone="bg-emerald-100 text-emerald-700" />
+        <BarList title="By category" rows={m.byCategory} tone="bg-blue-500" />
+        <BarList title="By priority" rows={m.byPriority} tone="bg-indigo-500" />
       </div>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <SplitGrid title="Completion Split — by Lead Type" rows={COMPLETION_SPLIT} />
-        <SplitGrid title="Pending / Overdue Split — by Lead Type" rows={PENDING_SPLIT} />
-      </div>
-
-      <GhostedTable />
     </div>
   );
 }
@@ -224,166 +250,22 @@ function Kpi({ title, value, sub, badge, badgeTone, border }: { title: string; v
   );
 }
 
-function CounsellorTable() {
-  const [f, setF] = useState<"all" | CounsellorRow["status"]>("all");
-  const counts = useMemo(() => ({
-    all: COUNSELLORS.length,
-    "On track": COUNSELLORS.filter((c) => c.status === "On track").length,
-    "At risk": COUNSELLORS.filter((c) => c.status === "At risk").length,
-    Critical: COUNSELLORS.filter((c) => c.status === "Critical").length,
-  }), []);
-  const rows = COUNSELLORS.filter((c) => f === "all" || c.status === f);
-  const chip = (s: CounsellorRow["status"]) => s === "On track" ? "bg-emerald-100 text-emerald-700" : s === "At risk" ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700";
-  const pctChip = (p: number) => p >= 90 ? "bg-emerald-100 text-emerald-700" : p >= 50 ? "bg-amber-100 text-amber-700" : "bg-rose-100 text-rose-700";
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 p-4">
-        <h3 className="text-sm font-semibold text-slate-900">Counsellor Follow-up Workload &amp; Accountability</h3>
-        <div className="flex items-center gap-1.5 text-xs">
-          {([["all", `All ${counts.all}`], ["On track", `${counts["On track"]} On track`], ["At risk", `${counts["At risk"]} At risk`], ["Critical", `${counts.Critical} Critical`]] as const).map(([key, label]) => (
-            <button key={key} onClick={() => setF(key as typeof f)} className={`rounded-full px-2.5 py-1 font-medium transition ${f === key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="max-h-96 overflow-auto">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-            <tr>{["Counsellor", "Assigned", "Completed", "Pending", "Overdue", "Customer", "Callback", "Funnel", "Prospect", "Completed %", "Status"].map((h) => <th key={h} className="whitespace-nowrap px-4 py-2.5">{h}</th>)}</tr>
-          </thead>
-          <tbody>
-            {rows.map((c) => (
-              <tr key={c.name} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                <td className="whitespace-nowrap px-4 py-2.5 font-medium text-slate-800">{c.name}</td>
-                <td className="px-4 py-2.5 text-slate-600">{c.assigned}</td>
-                <td className="px-4 py-2.5 font-medium text-emerald-600">{c.completed}</td>
-                <td className={`px-4 py-2.5 font-medium ${c.pending ? "text-rose-600" : "text-slate-400"}`}>{c.pending}</td>
-                <td className="px-4 py-2.5">{c.overdue ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-700">{c.overdue}</span> : <span className="text-slate-400">0</span>}</td>
-                <td className="px-4 py-2.5 text-slate-500">{c.customer || 0}</td>
-                <td className="px-4 py-2.5 text-slate-500">{c.callback || 0}</td>
-                <td className="px-4 py-2.5 text-slate-500">{c.funnel || 0}</td>
-                <td className="px-4 py-2.5 text-slate-500">{c.prospect || 0}</td>
-                <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${pctChip(c.pct)}`}>{c.pct}%</span></td>
-                <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${chip(c.status)}`}>{c.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function VolumeChart() {
-  const max = Math.max(1, ...STATUS_VOLUME.map((s) => s.total));
-  return (
-    <Panel title="Follow-up Volume by Lead Status">
-      <div className="flex flex-wrap gap-x-3 gap-y-1 pb-3 text-[11px] text-slate-500">
-        {STATUS_VOLUME.map((s) => <span key={s.name} className="inline-flex items-center gap-1"><span className={`h-2 w-2 rounded-sm ${s.color}`} />{s.name} ({s.total})</span>)}
-      </div>
-      <div className="flex h-44 items-end gap-2">
-        {STATUS_VOLUME.map((s) => (
-          <div key={s.name} className="flex flex-1 flex-col items-center gap-1">
-            <div className="flex h-40 w-full max-w-[28px] items-end">
-              <div className="relative w-full overflow-hidden rounded-t bg-slate-100" style={{ height: `${(s.total / max) * 100}%` }} title={`${s.name}: ${s.completed}/${s.total}`}>
-                <div className={`absolute bottom-0 w-full ${s.color}`} style={{ height: s.total ? `${(s.completed / s.total) * 100}%` : "0%" }} />
-              </div>
-            </div>
-            <span className="w-full truncate text-center text-[9px] text-slate-400" title={s.name}>{s.name.split(" ")[0]}</span>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function AgingChart() {
-  const max = Math.max(1, ...AGING.map((a) => a.value));
-  return (
-    <Panel title="Overdue Aging Analysis">
-      <div className="space-y-3">
-        {AGING.map((a) => (
-          <div key={a.label} className="flex items-center gap-3">
-            <span className="w-28 shrink-0 text-xs text-slate-600">{a.label}</span>
-            <div className="h-5 flex-1 overflow-hidden rounded bg-slate-100">
-              <div className="h-full rounded bg-gradient-to-r from-rose-400 to-rose-600" style={{ width: `${(a.value / max) * 100}%` }} />
-            </div>
-            <span className="w-10 shrink-0 text-right text-xs font-semibold text-slate-700">{fmt(a.value)}</span>
-            <span className={`w-16 shrink-0 rounded-full px-2 py-0.5 text-center text-[10px] font-semibold ${a.tone}`}>{a.tag}</span>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-function BarList({ title, rows, tone, badge, badgeTone }: { title: string; rows: { name: string; count: number }[]; tone: string; badge: string; badgeTone: string }) {
+function BarList({ title, rows, tone, badge, badgeTone }: { title: string; rows: { name: string; count: number }[]; tone: string; badge?: string; badgeTone?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   return (
     <Panel title={title}>
       <div className="space-y-2.5">
+        {rows.length === 0 && <p className="text-sm text-slate-400">No data yet.</p>}
         {rows.map((r) => (
           <div key={r.name} className="flex items-center gap-3">
             <span className="w-32 shrink-0 truncate text-xs text-slate-600">{r.name}</span>
             <div className="h-4 flex-1 overflow-hidden rounded bg-slate-100"><div className={`h-full rounded ${tone}`} style={{ width: `${(r.count / max) * 100}%` }} /></div>
             <span className="w-6 shrink-0 text-right text-xs font-semibold text-slate-700">{r.count}</span>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeTone}`}>{badge}</span>
+            {badge && <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${badgeTone}`}>{badge}</span>}
           </div>
         ))}
       </div>
     </Panel>
-  );
-}
-
-function SplitGrid({ title, rows }: { title: string; rows: SplitRow[] }) {
-  return (
-    <Panel title={title}>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {rows.map((r) => {
-          const pct = r.total ? Math.round((r.done / r.total) * 100) : 0;
-          return (
-            <div key={r.type} className="rounded-lg border border-slate-200 p-2.5">
-              <p className="flex items-center gap-1.5 truncate text-xs font-medium text-slate-700"><span className={`h-2 w-2 rounded-sm ${r.color}`} />{r.type}</p>
-              <p className="mt-1 text-[11px] text-slate-500">{fmt(r.done)}/{fmt(r.total)} done</p>
-              <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-slate-100"><div className={`h-full rounded-full ${r.color}`} style={{ width: `${pct}%` }} /></div>
-            </div>
-          );
-        })}
-      </div>
-    </Panel>
-  );
-}
-
-function GhostedTable() {
-  const toast = useToast();
-  function exportCsv() {
-    const head = ["Name", "Owner", "Type", "Attempts", "Last contact"];
-    const lines = GHOSTED.map((g) => [g.name, g.by, g.type, String(g.attempts), g.connected ? g.ago : "Not Connected"]);
-    const csv = [head, ...lines].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    const a = document.createElement("a"); a.href = url; a.download = "ghosted-leads.csv"; a.click(); URL.revokeObjectURL(url);
-    toast.success("Exported", "ghosted-leads.csv downloaded");
-  }
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-slate-200 p-4">
-        <h3 className="text-sm font-semibold text-slate-900">Ghosted Leads — no response after 3+ attempts</h3>
-        <button onClick={exportCsv} className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"><Icon name="download" className="h-3.5 w-3.5" /> Export Excel</button>
-      </div>
-      <div className="divide-y divide-slate-100">
-        {GHOSTED.map((g) => (
-          <div key={g.name + g.phone} className="flex flex-wrap items-center gap-3 px-4 py-2.5 hover:bg-slate-50">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-800">{g.name}</p>
-              <p className="truncate text-xs text-slate-400">{g.by}</p>
-            </div>
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${g.typeBadge}`}>{g.type}</span>
-            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-semibold text-rose-600">{g.attempts} attempts</span>
-            <span className={`w-24 text-right text-xs ${g.connected ? "text-slate-500" : "text-rose-500"}`}>{g.connected ? g.ago : "Not Connected"}</span>
-            <a href={`https://wa.me/${digits(g.phone)}`} target="_blank" rel="noopener" className="rounded-md p-1.5 text-slate-400 transition hover:bg-emerald-50 hover:text-emerald-600" title="WhatsApp"><Icon name="whatsapp" className="h-4 w-4" /></a>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
