@@ -21,6 +21,10 @@ export type PlatformConfig = {
   automation: Record<string, boolean>;
   // Which modules each subscription plan unlocks (planId -> feature keys).
   planFeatures: Record<string, string[]>;
+  // The full feature catalog known when this config was last saved. Lets us tell
+  // a module the admin deliberately switched off apart from one that simply
+  // didn't exist yet — so newly-added modules aren't silently locked on upgrade.
+  featureCatalog: string[];
 };
 
 // Every gateable module the Super Admin can switch on/off per plan, grouped for
@@ -75,6 +79,41 @@ export function hasLegacyFeatures(pf?: Record<string, string[]>): boolean {
   return Object.values(pf).some((arr) => Array.isArray(arr) && arr.some((k) => !ALL_FEATURE_KEYS.includes(k)));
 }
 
+/**
+ * Merge a saved per-plan feature map over the current defaults.
+ *
+ * The subtlety: when a NEW gateable module is added to the catalog, any
+ * workspace whose Super Admin previously saved plan features has a stored list
+ * that predates the new key — and a naive `{...defaults, ...saved}` merge lets
+ * that stale list override the default, silently LOCKING the new module (this is
+ * how Financial/HR could vanish on an existing deployment). We fix that by
+ * granting each plan any feature key the saved config never knew about (absent
+ * from every saved plan list) *when that plan's default includes it*. Deliberate
+ * admin opt-outs of keys they've actually seen are still respected.
+ */
+export function mergePlanFeatures(saved?: Record<string, string[]>, savedCatalog?: string[]): Record<string, string[]> {
+  const defaults = Object.fromEntries(Object.entries(DEFAULT_PLAN_FEATURES).map(([k, v]) => [k, [...v]]));
+  // A legacy/invalid map can't be reasoned about key-by-key — fall back wholesale.
+  if (!saved || hasLegacyFeatures(saved)) return defaults;
+
+  // Which keys the saved config knew about. Prefer the explicit catalog marker
+  // (precise — distinguishes a deliberately-disabled module from one that didn't
+  // exist yet). Legacy configs lack it, so fall back to "any key present in some
+  // saved plan list" — a best-effort heuristic that still unlocks new modules.
+  const known = savedCatalog && savedCatalog.length
+    ? new Set(savedCatalog)
+    : new Set(Object.values(saved).flat());
+  const newKeys = ALL_FEATURE_KEYS.filter((k) => !known.has(k));
+
+  const out: Record<string, string[]> = { ...defaults };
+  for (const plan of new Set([...Object.keys(defaults), ...Object.keys(saved)])) {
+    const savedList = saved[plan] ?? defaults[plan] ?? [];
+    const grantNew = newKeys.filter((k) => (DEFAULT_PLAN_FEATURES[plan] ?? []).includes(k));
+    out[plan] = Array.from(new Set([...savedList, ...grantNew]));
+  }
+  return out;
+}
+
 export const AUTOMATIONS: { key: string; label: string; desc: string }[] = [
   { key: "welcomeEmail", label: "Welcome email on signup", desc: "Email new client admins when their workspace is provisioned." },
   { key: "trialReminder", label: "Trial expiry reminders", desc: "Notify clients 3 days before their trial ends." },
@@ -113,6 +152,7 @@ export const DEFAULT_PLATFORM: PlatformConfig = {
   google: { enabled: false, clientId: "", clientSecret: "", gmail: true, calendar: true, meet: true },
   automation: Object.fromEntries(AUTOMATIONS.map((a) => [a.key, ["welcomeEmail", "trialReminder", "invoiceEmail"].includes(a.key)])),
   planFeatures: DEFAULT_PLAN_FEATURES,
+  featureCatalog: [...ALL_FEATURE_KEYS],
 };
 
 const EVENT = "platform:updated";
@@ -127,6 +167,7 @@ function clone(c: PlatformConfig): PlatformConfig {
     google: { ...c.google },
     automation: { ...c.automation },
     planFeatures: Object.fromEntries(Object.entries(c.planFeatures).map(([k, v]) => [k, [...v]])),
+    featureCatalog: [...(c.featureCatalog ?? ALL_FEATURE_KEYS)],
   };
 }
 
@@ -142,7 +183,10 @@ function mergeConfig(p: Partial<PlatformConfig> | null | undefined): PlatformCon
     payment: { ...base.payment, ...p.payment },
     google: { ...base.google, ...p.google },
     automation: { ...base.automation, ...p.automation },
-    planFeatures: hasLegacyFeatures(p.planFeatures) ? base.planFeatures : { ...base.planFeatures, ...(p.planFeatures ?? {}) },
+    planFeatures: mergePlanFeatures(p.planFeatures, p.featureCatalog),
+    // Always stamp the CURRENT catalog so the next save records what this build
+    // knew about, making future upgrades precise (no reliance on the heuristic).
+    featureCatalog: [...ALL_FEATURE_KEYS],
   };
 }
 
