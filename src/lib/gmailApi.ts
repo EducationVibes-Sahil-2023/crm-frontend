@@ -60,7 +60,7 @@ export type CalendarEvent = {
   attendees?: string[];
 };
 
-export function createGmailClient(tokenProvider: () => string | null): GmailClient {
+export function createGmailClient(tokenProvider: () => string | null, onUnauthorized?: () => void): GmailClient {
   async function req<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers({ "Content-Type": "application/json", ...(init?.headers as Record<string, string>) });
     const token = tokenProvider();
@@ -68,7 +68,13 @@ export function createGmailClient(tokenProvider: () => string | null): GmailClie
     const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store", ...init, headers });
     if (!res.ok) {
       const body = await res.text();
-      throw new Error(`Gmail API ${res.status}: ${body || res.statusText}`);
+      let msg = res.statusText;
+      try { const j = JSON.parse(body); msg = j?.messages?.error ?? j?.error ?? body; } catch { msg = body || res.statusText; }
+      if (res.status === 401) {
+        onUnauthorized?.();
+        throw new Error("Your session expired — please sign in again.");
+      }
+      throw new Error(msg || `Request failed (${res.status})`);
     }
     const text = await res.text();
     return (text ? JSON.parse(text) : null) as T;

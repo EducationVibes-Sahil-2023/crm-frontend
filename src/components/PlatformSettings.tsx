@@ -10,7 +10,7 @@ import SearchableSelect from "@/components/SearchableSelect";
 import { AUTOMATIONS, PLATFORM_FEATURES, ALL_FEATURE_KEYS, loadPlatform, refreshPlatform, rid, savePlatform, type PlatformConfig, type PlatformPlan, type Review } from "@/lib/platform";
 import { readLogo } from "@/lib/branding";
 import { createGmailClient } from "@/lib/gmailApi";
-import { ensureSuperAdminToken, getSuperAdminToken } from "@/lib/superAdmin";
+import { ensureSuperAdminToken, getSuperAdminToken, superAdminLogout } from "@/lib/superAdmin";
 import MenuEditor from "@/components/MenuEditor";
 import { type NavConfig } from "@/lib/navConfig";
 import {
@@ -19,7 +19,14 @@ import {
   type Appearance, type AccentKey, type Density, type Radius, type BgKey,
 } from "@/lib/appearance";
 
-const superGmail = createGmailClient(getSuperAdminToken);
+// On a 401 the super-admin session has expired — clear it and go sign in, so a
+// stale token can't masquerade as a "save failed / backend down" error.
+const superGmail = createGmailClient(getSuperAdminToken, () => {
+  if (typeof window !== "undefined") {
+    superAdminLogout();
+    window.location.href = "/admin/login?expired=1";
+  }
+});
 
 type Tab = "brand" | "appearance" | "landing" | "plans" | "permissions" | "reviews" | "payments" | "google" | "automation";
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
@@ -95,9 +102,10 @@ export default function PlatformSettings() {
         setGtest({ status: "fail", msg: res.hasSecret ? "Saved, but not fully configured." : "Add the Client Secret to finish." });
         toast.error("Almost there", "Add the Client Secret and save again.");
       }
-    } catch {
-      setGtest({ status: "fail", msg: "Couldn't reach the server. Is the backend running on :8080?" });
-      toast.error("Save failed", "The backend didn't accept the credentials.");
+    } catch (e) {
+      const msg = (e as Error).message || "Couldn't reach the server. Is the backend running on :8080?";
+      setGtest({ status: "fail", msg });
+      toast.error("Save failed", msg);
     }
   }
 

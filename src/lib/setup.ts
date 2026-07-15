@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 
 export type OptionKind =
   | "status"
@@ -141,35 +141,97 @@ function clone(data: SetupData): SetupData {
   };
 }
 
-export function loadSetup(): SetupData {
+// The lists live in MySQL now (per-workspace, via /api/config). We keep a
+// synchronous in-memory cache (mirrors leadStore) so the many callers of
+// loadSetup()/optionNames() stay sync; hydrateSetup() fills it from the API at
+// sign-in, and setSetupKind() keeps it fresh after edits. localStorage is a
+// last-resort offline mirror.
+export const SETUP_EVENT = "setup:changed";
+// Lists that are DB-backed by the Config controller (vendor has its own table).
+const DB_KINDS: OptionKind[] = ["status", "source", "type", "subStatus", "department", "designation", "ticketCategory", "ticketPriority", "assetCategory"];
+
+let cache: SetupData | null = null;
+
+function broadcast() {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SETUP_EVENT));
+}
+
+function readLocal(): SetupData {
   if (typeof window === "undefined") return clone(DEFAULT_SETUP);
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return clone(DEFAULT_SETUP);
-    const parsed = JSON.parse(raw) as Partial<SetupData>;
-    return {
-      status: parsed.status ?? clone(DEFAULT_SETUP).status,
-      source: parsed.source ?? clone(DEFAULT_SETUP).source,
-      type: parsed.type ?? clone(DEFAULT_SETUP).type,
-      subStatus: parsed.subStatus ?? clone(DEFAULT_SETUP).subStatus,
-      department: parsed.department ?? clone(DEFAULT_SETUP).department,
-      designation: parsed.designation ?? clone(DEFAULT_SETUP).designation,
-      ticketPriority: parsed.ticketPriority ?? clone(DEFAULT_SETUP).ticketPriority,
-      ticketCategory: parsed.ticketCategory ?? clone(DEFAULT_SETUP).ticketCategory,
-      assetCategory: parsed.assetCategory ?? clone(DEFAULT_SETUP).assetCategory,
-      vendor: parsed.vendor ?? clone(DEFAULT_SETUP).vendor,
-    };
+    const p = JSON.parse(raw) as Partial<SetupData>;
+    const d = clone(DEFAULT_SETUP);
+    (Object.keys(d) as OptionKind[]).forEach((k) => { if (p[k]) d[k] = p[k]!.map((o) => ({ ...o })); });
+    return d;
   } catch {
     return clone(DEFAULT_SETUP);
   }
 }
 
-export function saveSetup(data: SetupData): void {
+function writeLocal(data: SetupData): void {
+  if (typeof window !== "undefined") {
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* quota */ }
+  }
+}
+
+/** Pull every DB-backed list from the workspace API into the cache (sign-in). */
+export async function hydrateSetup(): Promise<void> {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  const base = readLocal();
+  try {
+    const { listConfig } = await import("@/lib/configApi");
+    const results = await Promise.all(
+      DB_KINDS.map((k) => listConfig(k).then((items) => [k, items] as const).catch(() => null)),
+    );
+    for (const r of results) {
+      if (!r) continue;
+      const [k, items] = r;
+      base[k] = items.map((it) => ({ id: it.id, name: it.name, color: it.color || "slate", createdBy: "—", createdAt: "—" }));
+    }
+    cache = base;
+    writeLocal(base);
+    broadcast();
+  } catch {
+    cache = base;
+  }
+}
+
+/** Update one list in the cache (called after an edit). */
+export function setSetupKind(kind: OptionKind, items: SetupOption[]): void {
+  const c = cache ?? readLocal();
+  c[kind] = items.map((o) => ({ ...o }));
+  cache = c;
+  writeLocal(c);
+  broadcast();
+}
+
+export function loadSetup(): SetupData {
+  if (!cache) cache = readLocal();
+  return clone(cache);
+}
+
+/** Kept for back-compat — writes the whole set to the cache + local mirror. */
+export function saveSetup(data: SetupData): void {
+  cache = clone(data);
+  writeLocal(data);
+  broadcast();
 }
 
 /** Convenience: just the names for a kind (used by Lead forms/filters). */
 export function optionNames(kind: OptionKind): string[] {
   return loadSetup()[kind].map((o) => o.name);
+}
+
+/** Live names for a kind — re-renders when the setup lists change. */
+export function useSetupNames(kind: OptionKind): string[] {
+  const [names, setNames] = useState<string[]>(() => optionNames(kind));
+  useEffect(() => {
+    const read = () => setNames(optionNames(kind));
+    read();
+    window.addEventListener(SETUP_EVENT, read);
+    return () => window.removeEventListener(SETUP_EVENT, read);
+  }, [kind]);
+  return names;
 }

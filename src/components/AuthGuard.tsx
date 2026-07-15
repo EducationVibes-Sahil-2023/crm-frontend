@@ -7,6 +7,7 @@ import { hydrateStore } from "@/lib/dbStore";
 import { hydrateLeads } from "@/lib/leadStore";
 import { hydrateActivities } from "@/lib/activity";
 import { hydrateVendors } from "@/lib/vendors";
+import { hydrateSetup } from "@/lib/setup";
 
 // How often to re-verify the session against the backend.
 const POLL_MS = 15_000;
@@ -21,12 +22,13 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       router.replace("/login");
       return;
     }
-    setChecked(true);
+    const markChecked = () => setChecked(true);
+    markChecked();
     // Load all app data from the database before showing the app, so the first
     // render has real data (and never saves defaults back over the DB). Leads
     // hydrate after the key/value store so the one-time blob import can read it.
     hydrateStore()
-      .then(() => Promise.all([hydrateLeads(), hydrateActivities(), hydrateVendors()]))
+      .then(() => Promise.all([hydrateLeads(), hydrateActivities(), hydrateVendors(), hydrateSetup()]))
       .finally(() => setStoreReady(true));
 
     let active = true;

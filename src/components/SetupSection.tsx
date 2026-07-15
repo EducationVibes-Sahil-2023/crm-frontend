@@ -12,12 +12,11 @@ import {
   colorHex,
   dotStyle,
   isHexColor,
-  loadSetup,
-  saveSetup,
+  setSetupKind,
   type OptionKind,
-  type SetupData,
   type SetupOption,
 } from "@/lib/setup";
+import { listConfig, createConfig, updateConfig, deleteConfig } from "@/lib/configApi";
 
 /** Preset swatches + a custom colour picker. A value is either a preset key
  * ("blue") or a literal "#rrggbb" chosen from the native colour input. */
@@ -59,24 +58,30 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
 
 export default function SetupSection({ kind }: { kind: OptionKind }) {
   const toast = useToast();
-  const [data, setData] = useState<SetupData>(loadSetup);
-  const [ready, setReady] = useState(false);
+  const [items, setItems] = useState<SetupOption[]>([]);
+  const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [color, setColor] = useState("blue");
-
-  useEffect(() => {
-    setData(loadSetup());
-    setReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (ready) saveSetup(data);
-  }, [data, ready]);
-
   const label = KIND_LABELS[kind];
-  const items = data[kind];
 
-  function add(e: React.FormEvent) {
+  // Keep the shared setup cache (used by lead forms/filters) in sync.
+  const sync = (next: SetupOption[]) => { setItems(next); setSetupKind(kind, next); };
+
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      setLoading(true);
+      listConfig(kind)
+        .then((rows) => { if (!alive) return; const mapped = rows.map((r) => ({ id: r.id, name: r.name, color: r.color || "slate", createdBy: "—", createdAt: "—" })); setItems(mapped); setSetupKind(kind, mapped); })
+        .catch((e) => toast.error("Couldn't load", (e as Error).message))
+        .finally(() => { if (alive) setLoading(false); });
+    };
+    load();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind]);
+
+  async function add(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
@@ -84,27 +89,33 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
       toast.error("Already exists", `"${trimmed}" is already a ${label}.`);
       return;
     }
-    const option: SetupOption = {
-      id: `${trimmed.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`,
-      name: trimmed,
-      color,
-      createdBy: getUser()?.name ?? "You",
-      createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }),
-    };
-    setData((d) => ({ ...d, [kind]: [...d[kind], option] }));
-    setName("");
-    toast.success(`${label} added`, `"${trimmed}" is now available.`);
-    logActivity(`Added ${label} "${trimmed}"`, { category: "setup", target: trimmed });
+    try {
+      const created = await createConfig(kind, { name: trimmed, color });
+      sync([...items, { id: created.id, name: created.name, color: created.color || color, createdBy: getUser()?.name ?? "You", createdAt: new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" }) }]);
+      setName("");
+      toast.success(`${label} added`, `"${trimmed}" is now available.`);
+      logActivity(`Added ${label} "${trimmed}"`, { category: "setup", target: trimmed });
+    } catch (err) {
+      toast.error("Couldn't add", (err as Error).message);
+    }
   }
 
   function setItemColor(id: string, c: string) {
-    setData((d) => ({ ...d, [kind]: d[kind].map((o) => (o.id === id ? { ...o, color: c } : o)) }));
+    sync(items.map((o) => (o.id === id ? { ...o, color: c } : o)));
+    updateConfig(kind, id, { color: c }).catch((e) => toast.error("Couldn't save colour", (e as Error).message));
   }
 
-  function remove(id: string, nm: string) {
-    setData((d) => ({ ...d, [kind]: d[kind].filter((o) => o.id !== id) }));
-    toast.info(`${label} removed`, `"${nm}" was deleted.`);
-    logActivity(`Removed ${label} "${nm}"`, { category: "setup", target: nm });
+  async function remove(id: string, nm: string) {
+    const prev = items;
+    sync(items.filter((o) => o.id !== id));
+    try {
+      await deleteConfig(kind, id);
+      toast.info(`${label} removed`, `"${nm}" was deleted.`);
+      logActivity(`Removed ${label} "${nm}"`, { category: "setup", target: nm });
+    } catch (err) {
+      sync(prev);
+      toast.error("Couldn't delete", (err as Error).message);
+    }
   }
 
   return (
@@ -199,7 +210,7 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
             {items.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
-                  No {label.toLowerCase()} options yet. Add one above.
+                  {loading ? "Loading…" : `No ${label.toLowerCase()} options yet. Add one above.`}
                 </td>
               </tr>
             )}
