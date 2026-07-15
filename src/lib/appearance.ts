@@ -3,18 +3,35 @@
 // font-size (density) and body font. Because Tailwind v4 utilities reference
 // these variables, changing them re-themes the whole app — no per-component work.
 
+import { useEffect, useState } from "react";
+import { ICON_ANIMS, type IconAnim } from "@/lib/adminMenu";
+import { loadPlatform } from "@/lib/platform";
+
+export { ICON_ANIMS, type IconAnim };
+
 export type AccentKey = "blue" | "indigo" | "violet" | "emerald" | "rose" | "amber" | "cyan";
 export type FontKey = "geist" | "system" | "rounded" | "serif" | "mono";
 export type Density = "compact" | "comfortable" | "spacious";
 export type Radius = "sharp" | "default" | "rounded";
+export type BgKey = "slate" | "white" | "gray" | "zinc" | "stone" | "tinted";
 
 export type Appearance = {
   accent: AccentKey;
   font: FontKey;
   density: Density;
   radius: Radius;
+  bg: BgKey;
   tablePageSize: number;
   stickyHeader: boolean;
+  // Sidebar (client menu) customization.
+  sidebarBg: string;              // sidebar background — #rrggbb
+  sidebarText: string;            // sidebar base text/icon colour — #rrggbb
+  sidebarAccent: string;          // active-item colour ("" = follow the theme accent)
+  sidebarIconChips: boolean;      // false = plain icons, true = coloured chip behind each icon
+  sidebarIconStyle: "outline" | "filled";
+  sidebarIconAnim: IconAnim;      // icon motion on hover (pulse = continuous, active item)
+  sidebarDescriptions: boolean;   // show a one-line subtitle under each menu label
+  sidebarQuickActions: boolean;   // show the quick-actions grid pinned above the nav
 };
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -22,9 +39,24 @@ export const DEFAULT_APPEARANCE: Appearance = {
   font: "geist",
   density: "comfortable",
   radius: "default",
+  bg: "slate",
   tablePageSize: 25,
   stickyHeader: true,
+  // Pre-defined default: a light menu that mirrors the admin control center
+  // (white background, slate text, coloured icon chips). Clients can change it.
+  sidebarBg: "#ffffff",
+  sidebarText: "#334155",
+  sidebarAccent: "",
+  sidebarIconChips: true,
+  sidebarIconStyle: "outline",
+  sidebarIconAnim: "pop",
+  sidebarDescriptions: true,
+  sidebarQuickActions: true,
 };
+
+// Preset swatches for the sidebar colours (light options first, then dark).
+export const SIDEBAR_BG_PRESETS = ["#ffffff", "#f8fafc", "#f1f5f9", "#1b2138", "#0f172a", "#111827", "#1e293b"];
+export const SIDEBAR_TEXT_PRESETS = ["#334155", "#475569", "#0f172a", "#cbd5e1", "#e2e8f0", "#94a3b8"];
 
 // Each accent remaps the brand palette (Tailwind `blue` → primary hue,
 // `indigo`/`sky` → secondary hue) so gradients stay rich.
@@ -58,6 +90,26 @@ export const RADII: Record<Radius, { label: string; scale: number }> = {
   rounded: { label: "Rounded", scale: 1.6 },
 };
 
+// Background color for the main content area (the "right panel" next to the
+// sidebar). `tinted` is derived from the current accent so it stays in sync.
+export const BACKGROUNDS: Record<BgKey, { label: string; value: string }> = {
+  slate: { label: "Slate (default)", value: "#f1f5f9" },
+  white: { label: "White", value: "#ffffff" },
+  gray: { label: "Cool gray", value: "#f3f4f6" },
+  zinc: { label: "Neutral", value: "#f4f4f5" },
+  stone: { label: "Warm", value: "#f7f6f4" },
+  tinted: { label: "Accent tint", value: "" }, // computed from the accent hue
+};
+
+// Resolve the panel background to a concrete color (tinted follows the accent).
+export function bgValue(bg: BgKey, accent: AccentKey): string {
+  if (bg === "tinted") {
+    const a = ACCENTS[accent] ?? ACCENTS.blue;
+    return `hsl(${a.primary} ${Math.min(a.sat, 60)}% 96.5%)`;
+  }
+  return (BACKGROUNDS[bg] ?? BACKGROUNDS.slate).value;
+}
+
 export const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 // Lightness curve (0–1) for palette steps 50…950.
@@ -79,14 +131,22 @@ export function accentSwatch(key: AccentKey): string {
 
 const KEY = "nexus_appearance";
 
+// The base theme = hardcoded defaults with the platform-wide default (set by the
+// Super Admin under Platform Settings → Appearance) layered on top. A client's
+// own local choices then layer over this base.
+function baseAppearance(): Appearance {
+  return { ...DEFAULT_APPEARANCE, ...(loadPlatform().appearance ?? {}) };
+}
+
 export function loadAppearance(): Appearance {
   if (typeof window === "undefined") return { ...DEFAULT_APPEARANCE };
+  const base = baseAppearance();
   try {
     const raw = window.localStorage.getItem(KEY);
-    if (!raw) return { ...DEFAULT_APPEARANCE };
-    return { ...DEFAULT_APPEARANCE, ...(JSON.parse(raw) as Partial<Appearance>) };
+    if (!raw) return base;
+    return { ...base, ...(JSON.parse(raw) as Partial<Appearance>) };
   } catch {
-    return { ...DEFAULT_APPEARANCE };
+    return base;
   }
 }
 
@@ -97,6 +157,25 @@ export function saveAppearance(a: Appearance): void {
   } catch {
     /* ignore */
   }
+  // Always notify live consumers (sidebar, etc.) so a save never leaves the UI
+  // stale — callers no longer need to remember to dispatch the event themselves.
+  window.dispatchEvent(new Event(APPEARANCE_EVENT));
+}
+
+/**
+ * Resolve the sidebar's active/highlight colours. A custom `sidebarAccent`
+ * (#rrggbb) wins; otherwise the colours follow the app THEME accent, so changing
+ * the theme recolours the menu's active item + icons too.
+ */
+export function sidebarAccentColors(a: Appearance): { solid: string; tint: string } {
+  if (/^#[0-9a-fA-F]{6}$/.test(a.sidebarAccent || "")) {
+    return { solid: a.sidebarAccent, tint: `${a.sidebarAccent}1a` };
+  }
+  const acc = ACCENTS[a.accent] ?? ACCENTS.blue;
+  return {
+    solid: `hsl(${acc.primary} ${acc.sat}% 48%)`,
+    tint: `hsl(${acc.primary} ${Math.min(acc.sat, 72)}% 95%)`,
+  };
 }
 
 export function getTablePageSize(): number {
@@ -127,6 +206,9 @@ export function applyAppearance(a: Appearance): void {
     root.style.setProperty(`--radius-${name}`, `${(rem * scale).toFixed(3)}rem`);
   }
 
+  // Panel background → the main content area reads var(--app-bg).
+  root.style.setProperty("--app-bg", bgValue(a.bg, a.accent));
+
   // Density → root font-size (Tailwind is rem-based, so this scales everything).
   root.style.fontSize = `${(DENSITIES[a.density] ?? DENSITIES.comfortable).px}px`;
 
@@ -135,3 +217,26 @@ export function applyAppearance(a: Appearance): void {
 }
 
 export const APPEARANCE_EVENT = "appearance:updated";
+
+/**
+ * Live appearance for client components (e.g. the sidebar) — re-renders when the
+ * theme is saved (same tab via APPEARANCE_EVENT, other tabs via `storage`).
+ * Starts from defaults to avoid an SSR/first-paint mismatch.
+ */
+export function useAppearance(): Appearance {
+  const [a, setA] = useState<Appearance>(DEFAULT_APPEARANCE);
+  useEffect(() => {
+    const read = () => setA(loadAppearance());
+    read();
+    const onStorage = (e: StorageEvent) => { if (!e.key || e.key === KEY) read(); };
+    window.addEventListener(APPEARANCE_EVENT, read);
+    window.addEventListener("platform:updated", read); // inherited default hydrated
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(APPEARANCE_EVENT, read);
+      window.removeEventListener("platform:updated", read);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+  return a;
+}

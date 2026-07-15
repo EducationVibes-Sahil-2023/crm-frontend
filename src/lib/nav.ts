@@ -1,24 +1,29 @@
 import type { IconName } from "@/components/icons";
 
 // `children` turns an item into a collapsible dropdown (e.g. the HRMS menu).
-export type NavItem = { label: string; href: string; icon: IconName; children?: NavItem[] };
+// `color` is an optional per-item icon colour (set from the menu editor).
+// `desc` is an optional one-line subtitle shown under the label (Control-Center
+// style rows) when the "Item descriptions" appearance option is on.
+export type NavItem = { label: string; href: string; icon: IconName; color?: string; desc?: string; children?: NavItem[] };
 export type NavGroup = { heading?: string; items: NavItem[] };
 
 export const NAV_GROUPS: NavGroup[] = [
   {
     items: [
-      { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
-      { label: "AI Assistant", href: "/assistant", icon: "ai" },
-      { label: "Leads", href: "/leads", icon: "leads" },
-      { label: "Lead Forms", href: "/forms", icon: "edit" },
-      { label: "Lead Transfers", href: "/lead-transfers", icon: "refresh" },
-      { label: "Visitor Tracker", href: "/visitor-tracker", icon: "eye" },
-      { label: "Follow-ups", href: "/follow-ups", icon: "bell" },
-      { label: "Task Management", href: "/tasks", icon: "task" },
+      { label: "Dashboard", href: "/dashboard", icon: "dashboard", desc: "Pipeline at a glance" },
+      { label: "AI Assistant", href: "/assistant", icon: "ai", desc: "Ask, draft & summarise" },
+      { label: "Leads", href: "/leads", icon: "leads", desc: "Manage your pipeline" },
+      { label: "Lead Forms", href: "/forms", icon: "edit", desc: "Capture forms & embeds" },
+      { label: "Excel Import", href: "/leads/import", icon: "upload", desc: "Import from Excel/CSV" },
+      { label: "Lead Transfers", href: "/lead-transfers", icon: "refresh", desc: "Reassign & route leads" },
+      { label: "Visitor Tracker", href: "/visitor-tracker", icon: "eye", desc: "Website visitors" },
+      { label: "Follow-ups", href: "/follow-ups", icon: "bell", desc: "Reminders & call-backs" },
+      { label: "Task Management", href: "/tasks", icon: "task", desc: "Plan & assign work" },
       {
         label: "Reports",
         href: "/reports",
         icon: "trendUp",
+        desc: "Analytics & insights",
         children: [
           { label: "Overview", href: "/reports", icon: "dashboard" },
           { label: "Sales Report", href: "/reports/sales", icon: "revenue" },
@@ -32,21 +37,41 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     heading: "Communication",
     items: [
-      { label: "Gmail", href: "/gmail", icon: "gmail" },
-      { label: "Chat", href: "/chat", icon: "chat" },
-      { label: "WhatsApp", href: "/whatsapp", icon: "whatsapp" },
-      { label: "Media", href: "/media", icon: "media" },
-      { label: "Announcement", href: "/announcement", icon: "announcement" },
+      { label: "Gmail", href: "/gmail", icon: "gmail", desc: "Inbox & compose" },
+      { label: "Chat", href: "/chat", icon: "chat", desc: "Team messaging" },
+      { label: "WhatsApp", href: "/whatsapp", icon: "whatsapp", desc: "Chat with leads" },
+      { label: "Media", href: "/media", icon: "media", desc: "Files & attachments" },
+      { label: "Announcement", href: "/announcement", icon: "announcement", desc: "Broadcast notices" },
+    ],
+  },
+  {
+    heading: "Marketing",
+    items: [
+      {
+        label: "Marketing",
+        href: "/marketing",
+        icon: "announcement",
+        desc: "Campaigns & broadcasts",
+        children: [
+          { label: "Overview", href: "/marketing", icon: "dashboard" },
+          { label: "WhatsApp Marketing", href: "/marketing/whatsapp", icon: "whatsapp" },
+          { label: "Email Marketing", href: "/marketing/email", icon: "gmail" },
+          { label: "SMS Marketing", href: "/marketing/sms", icon: "message" },
+          { label: "Templates", href: "/marketing/templates", icon: "fileText" },
+          { label: "Audiences", href: "/marketing/audiences", icon: "users" },
+        ],
+      },
     ],
   },
   {
     heading: "Operations",
     items: [
-      { label: "Calendar", href: "/calendar", icon: "calendar" },
+      { label: "Calendar", href: "/calendar", icon: "calendar", desc: "Schedule & events" },
       {
         label: "Call Tracker",
         href: "/call-tracker",
         icon: "call",
+        desc: "Call log & analytics",
         children: [
           { label: "Call Dashboard", href: "/call-tracker/dashboard", icon: "dashboard" },
           { label: "Call Log", href: "/call-tracker", icon: "list" },
@@ -56,14 +81,15 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Mobile App",
         href: "/downloads",
         icon: "download",
+        desc: "Apps & tracking",
         children: [
           { label: "App Downloads", href: "/downloads", icon: "download" },
           { label: "Live Tracking", href: "/live-tracking", icon: "pin" },
           { label: "App Security", href: "/app-security", icon: "shield" },
         ],
       },
-      { label: "Lead Visitor", href: "/lead-visitor", icon: "visitor" },
-      { label: "Support Ticket", href: "/support-ticket", icon: "ticket" },
+      { label: "Lead Visitor", href: "/lead-visitor", icon: "visitor", desc: "Walk-in visitors" },
+      { label: "Support Ticket", href: "/support-ticket", icon: "ticket", desc: "Helpdesk & tickets" },
     ],
   },
   {
@@ -73,6 +99,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Accounts",
         href: "/account-dashboard",
         icon: "revenue",
+        desc: "Invoices & payments",
         children: [
           { label: "Accounts Dashboard", href: "/account-dashboard", icon: "dashboard" },
           { label: "Invoices", href: "/invoices", icon: "fileText" },
@@ -88,6 +115,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Asset Management",
         href: "/asset-dashboard",
         icon: "asset",
+        desc: "Track company assets",
         children: [
           { label: "Asset Dashboard", href: "/asset-dashboard", icon: "dashboard" },
           { label: "Asset Register", href: "/asset-management", icon: "asset" },
@@ -102,6 +130,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "Inventory",
         href: "/inventory",
         icon: "inventory",
+        desc: "Stock & suppliers",
         children: [
           { label: "Dashboard", href: "/inventory/dashboard", icon: "dashboard" },
           { label: "All Items", href: "/inventory", icon: "asset" },
@@ -111,8 +140,8 @@ export const NAV_GROUPS: NavGroup[] = [
           { label: "Suppliers", href: "/inventory/suppliers", icon: "briefcase" },
         ],
       },
-      { label: "Vendors", href: "/vendors", icon: "briefcase" },
-      { label: "Knowledge Base", href: "/knowledge-base", icon: "knowledge" },
+      { label: "Vendors", href: "/vendors", icon: "briefcase", desc: "Supplier directory" },
+      { label: "Knowledge Base", href: "/knowledge-base", icon: "knowledge", desc: "Guides & help docs" },
     ],
   },
   {
@@ -122,6 +151,7 @@ export const NAV_GROUPS: NavGroup[] = [
         label: "HRMS",
         href: "/hrms",
         icon: "users",
+        desc: "People & payroll",
         children: [
           { label: "HR Dashboard", href: "/hrms", icon: "dashboard" },
           { label: "Attendance", href: "/attendance", icon: "clock" },
@@ -143,10 +173,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     heading: "Administration",
     items: [
-      { label: "Users", href: "/users", icon: "users" },
-      { label: "Activity Logs", href: "/activity-logs", icon: "activity" },
-      { label: "Subscription", href: "/subscription", icon: "star" },
-      { label: "Admin Setup", href: "/admin-setup", icon: "settings" },
+      { label: "Users", href: "/users", icon: "users", desc: "Team & access" },
+      { label: "Activity Logs", href: "/activity-logs", icon: "activity", desc: "Audit trail" },
+      { label: "Subscription", href: "/subscription", icon: "star", desc: "Plan & billing" },
+      { label: "Admin Setup", href: "/admin-setup", icon: "settings", desc: "Configure workspace" },
     ],
   },
   // NOTE: the platform owner's "Super Admin" menu is intentionally NOT in the

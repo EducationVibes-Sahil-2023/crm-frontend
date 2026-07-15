@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "in.educationvibes.nexus",
+  appId: "in.calling.app",
   appName: "Nexus HRMS",
   // Bundled fallback assets (shown while connecting / when offline).
   webDir: "mobile-shell",

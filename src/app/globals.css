@@ -33,6 +33,69 @@ body {
   animation: toast-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* Thin, subtle scrollbars across the whole app — both the client dashboard and
+   the super-admin panel. (`.no-scrollbar` below is more specific, so elements
+   that opt out still hide their scrollbar entirely.) */
+* {
+  scrollbar-width: thin;                                 /* Firefox */
+  scrollbar-color: rgba(100, 116, 139, 0.4) transparent; /* thumb / track */
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(100, 116, 139, 0.35);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(100, 116, 139, 0.55);
+}
+
+/* Slim, polished range slider (Logo size, etc.). The filled portion is drawn
+   via an inline `background` gradient; this styles the rail height + thumb. */
+input[type="range"].range-slim {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 9999px;
+  outline: none;
+}
+input[type="range"].range-slim::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid #2563eb;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+input[type="range"].range-slim::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+input[type="range"].range-slim:active::-webkit-slider-thumb {
+  transform: scale(1.05);
+  border-color: #1d4ed8;
+}
+input[type="range"].range-slim::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 2px solid #2563eb;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  cursor: pointer;
+}
+input[type="range"].range-slim::-moz-range-track {
+  background: transparent;
+}
+
 /* Hide scrollbars while keeping scroll functionality */
 .no-scrollbar {
   -ms-overflow-style: none;
@@ -40,6 +103,8 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Rich text rendered/edited in the Announcements module */
@@ -115,6 +180,22 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .nx-reveal { opacity: 1; transform: none; transition: none; }
   .nx-float, .nx-blob, .nx-gradient-text { animation: none; }
+}
+
+/* ---------- Admin menu icon motion ---------- */
+@keyframes nx-bounce { 0%,100%{ transform: translateY(0); } 30%{ transform: translateY(-4px); } 60%{ transform: translateY(-2px); } }
+@keyframes nx-spin   { to { transform: rotate(360deg); } }
+@keyframes nx-wiggle { 0%,100%{ transform: rotate(0); } 25%{ transform: rotate(-11deg); } 75%{ transform: rotate(11deg); } }
+@keyframes nx-pulse  { 0%,100%{ transform: scale(1); opacity: 1; } 50%{ transform: scale(1.14); opacity: .82; } }
+
+.nx-ico { transition: transform .25s cubic-bezier(.34,1.56,.64,1); transform-origin: center; will-change: transform; }
+.group:hover .nx-ico-pop    { transform: scale(1.2); }
+.group:hover .nx-ico-bounce { animation: nx-bounce .6s ease; }
+.group:hover .nx-ico-spin   { animation: nx-spin .7s linear; }
+.group:hover .nx-ico-wiggle { animation: nx-wiggle .5s ease-in-out; }
+.nx-ico-pulse               { animation: nx-pulse 1.8s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .nx-ico, .nx-ico-pop, .nx-ico-bounce, .nx-ico-spin, .nx-ico-wiggle, .nx-ico-pulse { animation: none !important; transition: none !important; transform: none !important; }
 }
 
 /* Marquee (auto-scrolling channel strip) */

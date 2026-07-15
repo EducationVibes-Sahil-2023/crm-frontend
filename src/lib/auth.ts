@@ -1,4 +1,5 @@
 import { logActivity } from "@/lib/activity";
+import { superAdminLogout } from "@/lib/superAdmin";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
@@ -35,6 +36,9 @@ function persistSession(data: { token: string; user: User }): User {
   if (typeof window !== "undefined") {
     window.localStorage.setItem(TOKEN_KEY, data.token);
     window.localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    // Client and super-admin are separate logins — signing in as a client ends
+    // any super-admin console session so the /admin UI isn't left accessible.
+    superAdminLogout();
   }
   logActivity("Signed in", { category: "auth", user: data.user.name });
   return data.user;

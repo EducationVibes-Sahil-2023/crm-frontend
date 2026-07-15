@@ -463,6 +463,9 @@ const PATHS: Record<IconName, ReactNode> = {
   ),
 };
 
+// Authoritative list of every available icon — used by pickers (e.g. the menu editor).
+export const ICON_NAMES = Object.keys(PATHS) as IconName[];
+
 export function Icon({
   name,
   className = "h-5 w-5",

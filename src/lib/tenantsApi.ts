@@ -1,7 +1,7 @@
 // Calls the backend that provisions a real, isolated database per client.
 // Authenticated with the super-admin JWT (the platform-owner console session).
 
-import { ensureSuperAdminToken } from "@/lib/superAdmin";
+import { ensureSuperAdminToken, superAdminLogout } from "@/lib/superAdmin";
 import { DB_HOST, REGIONS, type Plan, type Tenant, type TenantStatus } from "@/lib/tenants";
 
 const API_BASE_URL =
@@ -33,6 +33,12 @@ async function call<T>(path: string, init: RequestInit, retries = 3): Promise<T>
       const data = text ? JSON.parse(text) : null;
       if (res.ok) return data as T;
       lastErr = new Error(data?.messages?.error ?? data?.error ?? `Request failed (${res.status})`);
+      // Super-admin token expired/invalid → clear the dead session and send the
+      // user to sign in, instead of leaving the console stuck on "couldn't load".
+      if (res.status === 401 && typeof window !== "undefined") {
+        superAdminLogout();
+        window.location.href = "/admin/login?expired=1";
+      }
       if (res.status >= 400 && res.status < 500) break; // client error — don't retry
     } catch (e) {
       lastErr = e; // network/parse error — retry

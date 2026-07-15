@@ -2,8 +2,17 @@
 // A second, elevated login that gates the /super-admin console.
 // In production this is a real platform-level account on the master DB.
 
+import { useEffect, useState } from "react";
+
 const KEY = "super_admin_session_v1";
 const JWT_KEY = "super_admin_jwt";
+
+// Fired whenever the session changes (login / logout / credential update), so
+// the header + profile dropdown re-render live without a page reload.
+export const SUPER_ADMIN_EVENT = "superadmin:updated";
+function notifySuperAdmin(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(SUPER_ADMIN_EVENT));
+}
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
@@ -36,6 +45,12 @@ export async function superAdminLogin(email: string, password: string): Promise<
     if (typeof window !== "undefined") {
       window.localStorage.setItem(KEY, JSON.stringify({ email: data.email, name: data.name, at: new Date().toISOString() } satisfies SuperAdminSession));
       window.localStorage.setItem(JWT_KEY, data.token);
+      // Mutually exclusive with the client (tenant) login — clear any client
+      // session so the two never coexist in the same browser. (Keys mirror
+      // lib/auth.ts; cleared directly to avoid an import cycle.)
+      window.localStorage.removeItem("nexus_token");
+      window.localStorage.removeItem("nexus_user");
+      notifySuperAdmin();
     }
     return { ok: true };
   } catch {
@@ -66,6 +81,7 @@ export async function superAdminChangeCredentials(input: {
     // Reflect the new email/name in the cached console session.
     if (typeof window !== "undefined" && data?.email) {
       window.localStorage.setItem(KEY, JSON.stringify({ email: data.email, name: data.name, at: new Date().toISOString() } satisfies SuperAdminSession));
+      notifySuperAdmin();
     }
     return { ok: true };
   } catch {
@@ -87,10 +103,25 @@ export function isSuperAdmin(): boolean {
   return getSuperAdmin() !== null;
 }
 
+/** Live super-admin session — re-renders on login/logout/credential change. */
+export function useSuperAdmin(): SuperAdminSession | null {
+  const [sa, setSa] = useState<SuperAdminSession | null>(null);
+  useEffect(() => {
+    const read = () => setSa(getSuperAdmin());
+    read();
+    const onStorage = (e: StorageEvent) => { if (!e.key || e.key === KEY) read(); };
+    window.addEventListener(SUPER_ADMIN_EVENT, read);
+    window.addEventListener("storage", onStorage);
+    return () => { window.removeEventListener(SUPER_ADMIN_EVENT, read); window.removeEventListener("storage", onStorage); };
+  }, []);
+  return sa;
+}
+
 export function superAdminLogout(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(KEY);
   window.localStorage.removeItem(JWT_KEY);
+  notifySuperAdmin();
 }
 
 // ---- JWT bridge for protected APIs (e.g. Gmail) ----

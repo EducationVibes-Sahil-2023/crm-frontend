@@ -13,6 +13,7 @@ export const MODULES: { key: string; label: string }[] = [
   { key: "leads", label: "Leads" },
   { key: "tasks", label: "Task Management" },
   { key: "communication", label: "Communication" },
+  { key: "marketing", label: "Marketing" },
   { key: "operations", label: "Operations" },
   { key: "financial", label: "Financial" },
   { key: "users", label: "Users" },

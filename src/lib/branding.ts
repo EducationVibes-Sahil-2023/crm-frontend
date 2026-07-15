@@ -5,15 +5,23 @@
 import { useEffect, useState } from "react";
 
 export type Branding = {
-  appName: string;
-  tagline: string;
-  logo: string | null; // data URL
+  appName: string;        // optional — falls back to the workspace/platform name
+  tagline: string;        // optional — shown only when set
+  logo: string | null;    // data URL
+  favicon: string | null; // data URL for the browser-tab icon
+  logoWidth: number;      // logo image width as % of its tile (40–100)
+  logoHeight: number;     // logo image height as % of its tile (40–100)
+  logoOnly: boolean;      // hide the name/tagline text and show only the logo
 };
 
 export const DEFAULT_BRANDING: Branding = {
-  appName: "Nexus CRM",
-  tagline: "Enterprise",
+  appName: "",   // falls back to the workspace/platform name in the UI
+  tagline: "",   // shown only when explicitly set (no default "Enterprise")
   logo: null,
+  favicon: null,
+  logoWidth: 100,
+  logoHeight: 100,
+  logoOnly: false,
 };
 
 const KEY = "nexus_branding_v1";
@@ -72,8 +80,9 @@ export function readLogo(file: File): Promise<string> {
 export function useBranding(): Branding {
   const [b, setB] = useState<Branding>(DEFAULT_BRANDING);
   useEffect(() => {
-    setB(loadBranding());
-    return subscribeBranding(() => setB(loadBranding()));
+    const read = () => setB(loadBranding());
+    read();
+    return subscribeBranding(read);
   }, []);
   return b;
 }

@@ -11,12 +11,20 @@ import { AUTOMATIONS, PLATFORM_FEATURES, ALL_FEATURE_KEYS, loadPlatform, refresh
 import { readLogo } from "@/lib/branding";
 import { createGmailClient } from "@/lib/gmailApi";
 import { ensureSuperAdminToken, getSuperAdminToken } from "@/lib/superAdmin";
+import MenuEditor from "@/components/MenuEditor";
+import { type NavConfig } from "@/lib/navConfig";
+import {
+  ACCENTS, DENSITIES, RADII, BACKGROUNDS, SIDEBAR_BG_PRESETS, SIDEBAR_TEXT_PRESETS,
+  DEFAULT_APPEARANCE, accentSwatch, bgValue,
+  type Appearance, type AccentKey, type Density, type Radius, type BgKey,
+} from "@/lib/appearance";
 
 const superGmail = createGmailClient(getSuperAdminToken);
 
-type Tab = "brand" | "landing" | "plans" | "permissions" | "reviews" | "payments" | "google" | "automation";
+type Tab = "brand" | "appearance" | "landing" | "plans" | "permissions" | "reviews" | "payments" | "google" | "automation";
 const TABS: { key: Tab; label: string; icon: IconName }[] = [
   { key: "brand", label: "Branding", icon: "star" },
+  { key: "appearance", label: "Appearance", icon: "grid" },
   { key: "landing", label: "Landing Page", icon: "dashboard" },
   { key: "plans", label: "Plans", icon: "payment" },
   { key: "permissions", label: "Permissions", icon: "shield" },
@@ -41,9 +49,13 @@ export default function PlatformSettings() {
   useEffect(() => { if (loaded) savePlatform(cfg); }, [cfg, loaded]);
 
   const setBrand = (k: keyof PlatformConfig["brand"], v: string) => setCfg((c) => ({ ...c, brand: { ...c.brand, [k]: v } }));
+  const setBrandNum = (k: "logoWidth" | "logoHeight", v: number) => setCfg((c) => ({ ...c, brand: { ...c.brand, [k]: v } }));
+  const setBrandBool = (k: "logoOnly", v: boolean) => setCfg((c) => ({ ...c, brand: { ...c.brand, [k]: v } }));
   const setLanding = (k: keyof PlatformConfig["landing"], v: string) => setCfg((c) => ({ ...c, landing: { ...c.landing, [k]: v } }));
   const setPayment = <K extends keyof PlatformConfig["payment"]>(k: K, v: PlatformConfig["payment"][K]) => setCfg((c) => ({ ...c, payment: { ...c.payment, [k]: v } }));
   const setGoogle = <K extends keyof PlatformConfig["google"]>(k: K, v: PlatformConfig["google"][K]) => setCfg((c) => ({ ...c, google: { ...c.google, [k]: v } }));
+  const setAppearance = <K extends keyof Appearance>(k: K, v: Appearance[K]) => setCfg((c) => ({ ...c, appearance: { ...c.appearance, [k]: v } }));
+  const setNav = (nav: NavConfig) => setCfg((c) => ({ ...c, nav }));
 
   const [gtest, setGtest] = useState<{ status: "idle" | "testing" | "ok" | "fail"; msg: string }>({ status: "idle", msg: "" });
 
@@ -112,61 +124,202 @@ export default function PlatformSettings() {
         })}
       </div>
 
+      {/* Gate the content on the backend load so we never flash the stale/default
+          logo & favicon before the saved config arrives ("old then new"). */}
+      {!loaded ? (
+        <div className="flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white py-20 text-sm text-slate-500 shadow-sm">
+          <span className="h-5 w-5 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" /> Loading settings…
+        </div>
+      ) : (
+      <>
       {tab === "brand" && (
         <Card title="Branding & Logo" subtitle="Your platform identity across the app and landing page.">
+          {/* Identity */}
+          <SubHeading>Identity</SubHeading>
           <Grid>
             <Field label="Platform name"><Input value={cfg.brand.name} onChange={(v) => setBrand("name", v)} placeholder="CRM Cloud" /></Field>
             <Field label="Tagline"><Input value={cfg.brand.tagline} onChange={(v) => setBrand("tagline", v)} placeholder="The all-in-one CRM…" /></Field>
-            <Field label="Logo text (initials)"><Input value={cfg.brand.logoText} onChange={(v) => setBrand("logoText", v)} placeholder="CC" /></Field>
-            <ImageUploadField
-              label="Logo image"
-              value={cfg.brand.logoUrl}
-              onChange={(v) => setBrand("logoUrl", v)}
-              successMsg={["Logo updated", "Your new logo is live across the site."]}
-              hint="PNG, SVG or JPG up to 512 KB. Uploaded images are embedded in your config."
-              preview={
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl text-sm font-bold text-white" style={{ backgroundColor: cfg.brand.logoBg }}>
-                  {cfg.brand.logoUrl ? <img src={cfg.brand.logoUrl} alt="Logo" className="h-full w-full object-contain" /> : cfg.brand.logoText}
-                </span>
-              }
-            />
-            <ImageUploadField
-              label="Favicon (browser tab icon)"
-              value={cfg.brand.favicon}
-              onChange={(v) => setBrand("favicon", v)}
-              successMsg={["Favicon updated", "The browser tab icon now uses your image."]}
-              hint="Square PNG, SVG or ICO up to 512 KB. Shows in the browser tab."
-              preview={
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
-                  {cfg.brand.favicon ? <img src={cfg.brand.favicon} alt="Favicon" className="h-7 w-7 object-contain" /> : <Icon name="star" className="h-5 w-5" />}
-                </span>
-              }
-            />
-            <Field label="Contact email"><Input value={cfg.brand.email} onChange={(v) => setBrand("email", v)} placeholder="sales@yourcrm.com" /></Field>
-            <Field label="Contact phone"><Input value={cfg.brand.phone} onChange={(v) => setBrand("phone", v)} placeholder="+91 98765 43210" /></Field>
+            <Field label="Logo text (initials)" full>
+              <Input value={cfg.brand.logoText} onChange={(v) => setBrand("logoText", v)} placeholder="CC" />
+              <p className="mt-1 text-[11px] text-slate-400">Shown in the logo box when no logo image is set.</p>
+            </Field>
+          </Grid>
+          <ToggleRow
+            label="Show logo only"
+            desc="Hide the platform name, tagline & initials next to the logo — show just the logo image."
+            checked={cfg.brand.logoOnly}
+            onChange={(v) => setBrandBool("logoOnly", v)}
+          />
+
+          {/* Logo & favicon */}
+          <SubHeading>Logo &amp; favicon</SubHeading>
+          <ImageUploadField
+            label="Logo image"
+            value={cfg.brand.logoUrl}
+            onChange={(v) => setBrand("logoUrl", v)}
+            successMsg={["Logo updated", "Your new logo is live across the site."]}
+            hint="PNG, SVG or JPG up to 512 KB. Uploaded images are embedded in your config."
+            preview={
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl p-1.5 text-sm font-bold text-white" style={{ backgroundColor: cfg.brand.logoBg }}>
+                {cfg.brand.logoUrl ? <img src={cfg.brand.logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" style={{ width: `${cfg.brand.logoWidth}%`, height: `${cfg.brand.logoHeight}%` }} /> : cfg.brand.logoText}
+              </span>
+            }
+          />
+          {cfg.brand.logoUrl && (
+            <Field label="Logo size" full>
+              <div className="grid grid-cols-1 items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[1fr_auto]">
+                <div className="space-y-3">
+                  <SizeRange label="Width" value={cfg.brand.logoWidth} onChange={(v) => setBrandNum("logoWidth", v)} />
+                  <SizeRange label="Height" value={cfg.brand.logoHeight} onChange={(v) => setBrandNum("logoHeight", v)} />
+                </div>
+                <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-2.5">
+                  <span className="flex shrink-0 items-center justify-center overflow-hidden rounded-lg p-1" style={{ width: `${Math.round(120 * cfg.brand.logoWidth / 100)}px`, height: `${Math.round(40 * cfg.brand.logoHeight / 100)}px`, backgroundColor: cfg.brand.logoBg }}>
+                    <img src={cfg.brand.logoUrl} alt="Logo size preview" className="max-h-full max-w-full object-contain" />
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500">{cfg.brand.logoWidth}% × {cfg.brand.logoHeight}%</span>
+                </div>
+              </div>
+            </Field>
+          )}
+          <ImageUploadField
+            label="Favicon (browser tab icon)"
+            value={cfg.brand.favicon}
+            onChange={(v) => setBrand("favicon", v)}
+            successMsg={["Favicon updated", "The browser tab icon now uses your image."]}
+            hint="Square PNG, SVG or ICO up to 512 KB. Shows in the browser tab."
+            preview={
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-slate-400">
+                {cfg.brand.favicon ? <img src={cfg.brand.favicon} alt="Favicon" className="h-7 w-7 object-contain" /> : <Icon name="star" className="h-5 w-5" />}
+              </span>
+            }
+          />
+
+          {/* Colours */}
+          <SubHeading>Colours</SubHeading>
+          <Grid>
             <Field label="Primary color">
               <div className="flex items-center gap-2">
-                <input type="color" value={cfg.brand.primaryColor} onChange={(e) => setBrand("primaryColor", e.target.value)} className="h-10 w-12 cursor-pointer rounded-lg border border-slate-300" />
+                <input type="color" value={cfg.brand.primaryColor} onChange={(e) => setBrand("primaryColor", e.target.value)} className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-slate-300" />
                 <Input value={cfg.brand.primaryColor} onChange={(v) => setBrand("primaryColor", v)} placeholder="#2563eb" />
               </div>
               <p className="mt-1 text-[11px] text-slate-400">Buttons &amp; accents.</p>
             </Field>
             <Field label="Logo background color">
               <div className="flex items-center gap-2">
-                <input type="color" value={cfg.brand.logoBg} onChange={(e) => setBrand("logoBg", e.target.value)} className="h-10 w-12 cursor-pointer rounded-lg border border-slate-300" />
+                <input type="color" value={cfg.brand.logoBg} onChange={(e) => setBrand("logoBg", e.target.value)} className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-slate-300" />
                 <Input value={cfg.brand.logoBg} onChange={(v) => setBrand("logoBg", v)} placeholder="#2563eb" />
                 <button type="button" onClick={() => setBrand("logoBg", cfg.brand.primaryColor)} title="Match primary color" className="shrink-0 rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50">Match</button>
               </div>
               <p className="mt-1 text-[11px] text-slate-400">Box behind the logo/initials across the app.</p>
             </Field>
           </Grid>
+
+          {/* Contact */}
+          <SubHeading>Contact</SubHeading>
+          <Grid>
+            <Field label="Contact email"><Input value={cfg.brand.email} onChange={(v) => setBrand("email", v)} placeholder="sales@yourcrm.com" /></Field>
+            <Field label="Contact phone"><Input value={cfg.brand.phone} onChange={(v) => setBrand("phone", v)} placeholder="+91 98765 43210" /></Field>
+          </Grid>
+
+          {/* Live preview */}
+          <SubHeading>Preview</SubHeading>
           <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl text-base font-bold text-white" style={{ backgroundColor: cfg.brand.logoBg }}>
-              {cfg.brand.logoUrl ? <img src={cfg.brand.logoUrl} alt="" className="h-full w-full object-cover" /> : cfg.brand.logoText}
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl p-1.5 text-base font-bold text-white" style={{ backgroundColor: cfg.brand.logoBg }}>
+              {cfg.brand.logoUrl ? <img src={cfg.brand.logoUrl} alt="" className="max-h-full max-w-full object-contain" style={{ width: `${cfg.brand.logoWidth}%`, height: `${cfg.brand.logoHeight}%` }} /> : cfg.brand.logoText}
             </span>
-            <div><p className="font-bold text-slate-900">{cfg.brand.name}</p><p className="text-xs text-slate-500">{cfg.brand.tagline}</p></div>
+            {cfg.brand.logoOnly ? (
+              <span className="text-xs italic text-slate-400">Logo-only mode — name &amp; tagline are hidden.</span>
+            ) : (
+              <div className="min-w-0">
+                <p className="truncate font-bold text-slate-900">{cfg.brand.name || "Platform name"}</p>
+                <p className="truncate text-xs text-slate-500">{cfg.brand.tagline || "Tagline"}</p>
+              </div>
+            )}
           </div>
         </Card>
+      )}
+
+      {tab === "appearance" && (
+        <div className="space-y-6">
+          <Card title="Default theme" subtitle="The Theme & UI every client workspace inherits. Clients can still override it under their own Admin Setup → Theme & UI.">
+            {/* Accent */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-slate-500">Accent color</p>
+              <div className="flex flex-wrap gap-2.5">
+                {(Object.keys(ACCENTS) as AccentKey[]).map((key) => {
+                  const active = (cfg.appearance.accent ?? DEFAULT_APPEARANCE.accent) === key;
+                  return (
+                    <button key={key} type="button" onClick={() => setAppearance("accent", key)} title={ACCENTS[key].label} aria-label={ACCENTS[key].label}
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl ring-offset-2 transition ${active ? "ring-2 ring-slate-900" : "hover:scale-105"}`}
+                      style={{ background: accentSwatch(key) }}>
+                      {active && <Icon name="check" className="h-5 w-5 text-white" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Density + Radius */}
+            <Grid>
+              <div>
+                <p className="mb-2 text-xs font-medium text-slate-500">Density</p>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(DENSITIES) as Density[]).map((key) => (
+                    <PillButton key={key} active={(cfg.appearance.density ?? DEFAULT_APPEARANCE.density) === key} onClick={() => setAppearance("density", key)}>{DENSITIES[key].label}</PillButton>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="mb-2 text-xs font-medium text-slate-500">Corner roundness</p>
+                <div className="flex flex-wrap gap-2">
+                  {(Object.keys(RADII) as Radius[]).map((key) => (
+                    <PillButton key={key} active={(cfg.appearance.radius ?? DEFAULT_APPEARANCE.radius) === key} onClick={() => setAppearance("radius", key)}>{RADII[key].label}</PillButton>
+                  ))}
+                </div>
+              </div>
+            </Grid>
+
+            {/* Panel background */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-slate-500">Panel background</p>
+              <div className="flex flex-wrap gap-2">
+                {(Object.keys(BACKGROUNDS) as BgKey[]).map((key) => {
+                  const accent = cfg.appearance.accent ?? DEFAULT_APPEARANCE.accent;
+                  const active = (cfg.appearance.bg ?? DEFAULT_APPEARANCE.bg) === key;
+                  return (
+                    <button key={key} type="button" onClick={() => setAppearance("bg", key)}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${active ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>
+                      <span className="h-5 w-5 rounded border border-slate-200" style={{ background: bgValue(key, accent) }} />
+                      {BACKGROUNDS[key].label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Sidebar colors */}
+            <Grid>
+              <Field label="Sidebar background">
+                <ColorField value={cfg.appearance.sidebarBg ?? DEFAULT_APPEARANCE.sidebarBg} onChange={(v) => setAppearance("sidebarBg", v)} presets={SIDEBAR_BG_PRESETS} />
+              </Field>
+              <Field label="Sidebar text / icons">
+                <ColorField value={cfg.appearance.sidebarText ?? DEFAULT_APPEARANCE.sidebarText} onChange={(v) => setAppearance("sidebarText", v)} presets={SIDEBAR_TEXT_PRESETS} />
+              </Field>
+            </Grid>
+
+            <Field label="Sidebar active color">
+              <div className="flex flex-wrap items-center gap-2">
+                <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(cfg.appearance.sidebarAccent ?? "") ? cfg.appearance.sidebarAccent! : "#2563eb"} onChange={(e) => setAppearance("sidebarAccent", e.target.value)} className="h-9 w-10 cursor-pointer rounded-lg border border-slate-300" />
+                <button type="button" onClick={() => setAppearance("sidebarAccent", "")} className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${!cfg.appearance.sidebarAccent ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}>Follow theme accent</button>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-400">The active menu-item highlight. Leave on “Follow theme accent” to track the accent above.</p>
+            </Field>
+          </Card>
+
+          <Card title="Default menu" subtitle="The sidebar navigation clients start with — reorder, rename, re-slug, re-icon or hide items. Clients can further tweak their own." right={<button type="button" onClick={() => setNav({ items: {}, groups: {}, order: {} })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Reset menu</button>}>
+            <MenuEditor value={cfg.nav} onChange={setNav} />
+          </Card>
+        </div>
       )}
 
       {tab === "landing" && (
@@ -315,6 +468,8 @@ export default function PlatformSettings() {
           </div>
         </Card>
       )}
+      </>
+      )}
     </div>
   );
 }
@@ -364,13 +519,43 @@ function ReviewsTab({ reviews, onChange }: { reviews: Review[]; onChange: (r: Re
 // ---------- building blocks ----------
 function Card({ title, subtitle, right, children }: { title: string; subtitle?: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{title}</p>{subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}</div>{right}</div>
-      <div className="space-y-4">{children}</div>
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-3 flex items-start justify-between gap-3"><div><p className="text-sm font-semibold text-slate-800">{title}</p>{subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}</div>{right}</div>
+      <div className="space-y-3">{children}</div>
     </div>
   );
 }
-function Grid({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</div>; }
+function Grid({ children }: { children: React.ReactNode }) { return <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{children}</div>; }
+
+// Small section divider inside a Card — groups related fields for clean alignment.
+function SubHeading({ children }: { children: React.ReactNode }) {
+  return <p className="border-t border-slate-100 pt-4 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400 first:border-t-0 first:pt-0">{children}</p>;
+}
+
+function PillButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${active ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}>{children}</button>
+  );
+}
+
+// Hex color input with a native picker + preset swatches.
+function ColorField({ value, onChange, presets }: { value: string; onChange: (v: string) => void; presets: string[] }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(value) ? value : "#ffffff"} onChange={(e) => onChange(e.target.value)} className="h-9 w-10 shrink-0 cursor-pointer rounded-lg border border-slate-300" />
+        <Input value={value} onChange={onChange} placeholder="#ffffff" />
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((p) => (
+          <button key={p} type="button" onClick={() => onChange(p)} title={p} aria-label={p}
+            className={`h-6 w-6 rounded-md ${value.toLowerCase() === p.toLowerCase() ? "ring-2 ring-slate-900 ring-offset-1" : "border border-slate-300"}`}
+            style={{ background: p }} />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // Upload-or-URL image field. Hides long data: URLs behind a friendly chip so the
 // textarea isn't flooded with base64, and still allows pasting a remote URL.
@@ -423,19 +608,40 @@ function ImageUploadField({ label, value, onChange, preview, hint, successMsg }:
   );
 }
 function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
-  return <div className={full ? "sm:col-span-2" : ""}><label className="mb-1.5 block text-xs font-medium text-slate-500">{label}</label>{children}</div>;
+  return <div className={full ? "sm:col-span-2" : ""}><label className="mb-1 block text-[11px] font-medium text-slate-500">{label}</label>{children}</div>;
 }
 function Input({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
-  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />;
+  return <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />;
+}
+function SizeRange({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  const min = 40, max = 100;
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-12 shrink-0 text-xs font-medium text-slate-500">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={5}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label={label}
+        className="range-slim flex-1 cursor-pointer"
+        style={{ background: `linear-gradient(to right, #2563eb ${pct}%, #e2e8f0 ${pct}%)` }}
+      />
+      <span className="w-11 shrink-0 rounded-md bg-white px-1.5 py-0.5 text-center text-[11px] font-bold text-blue-700 ring-1 ring-slate-200">{value}%</span>
+    </div>
+  );
 }
 function Textarea({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2} className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />;
+  return <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={2} className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-sm outline-none transition focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20" />;
 }
 function Secret({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder?: string }) {
   const [show, setShow] = useState(false);
   return (
     <div className="flex items-center gap-2">
-      <input type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-slate-300 px-3 py-2.5 font-mono text-xs outline-none focus:border-blue-500" />
+      <input type={show ? "text" : "password"} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-xs outline-none transition focus:border-blue-500 focus:bg-white" />
       <button type="button" onClick={() => setShow((s) => !s)} className="rounded-lg border border-slate-300 p-2 text-slate-500 hover:bg-slate-50"><Icon name="eye" className="h-4 w-4" /></button>
     </div>
   );

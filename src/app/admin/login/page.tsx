@@ -6,6 +6,7 @@ import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { SUPER_ADMIN_DEMO, isSuperAdmin, superAdminLogin } from "@/lib/superAdmin";
 import { usePlatform } from "@/lib/platform";
+import { useBranding } from "@/lib/branding";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -16,6 +17,10 @@ export default function AdminLoginPage() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const logoBg = usePlatform().brand.logoBg;
+  // Same branding source as the client dashboard/login, so a custom logo (and
+  // the "logo only" option) carries through to the super-admin sign-in too.
+  const branding = useBranding();
+  const brandName = branding.appName || "Super Admin";
 
   useEffect(() => {
     if (isSuperAdmin()) router.replace("/admin");
@@ -44,12 +49,32 @@ export default function AdminLoginPage() {
 
       <div className="relative w-full max-w-sm">
         <div className="mb-7 text-center">
-          <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-3xl shadow-xl shadow-indigo-300/60" style={{ backgroundColor: logoBg }}>
-            <Icon name="shield" className="h-8 w-8 text-white" />
-            <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-[3px] border-white bg-emerald-400" />
-          </div>
-          <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-slate-900">Super Admin</h1>
-          <p className="mt-1.5 text-sm text-slate-500">Sign in to the platform control center</p>
+          {branding.logo ? (
+            // Custom logo — sized by the branding width/height, like the dashboard.
+            <div className="mx-auto flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={branding.logo}
+                alt={brandName}
+                className="object-contain"
+                style={{
+                  width: `${Math.round(180 * branding.logoWidth / 100)}px`,
+                  height: `${Math.round(64 * branding.logoHeight / 100)}px`,
+                }}
+              />
+            </div>
+          ) : (
+            <div className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-3xl shadow-xl shadow-indigo-300/60" style={{ backgroundColor: logoBg }}>
+              <Icon name="shield" className="h-8 w-8 text-white" />
+              <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-[3px] border-white bg-emerald-400" />
+            </div>
+          )}
+          {!branding.logoOnly && (
+            <>
+              <h1 className="mt-5 text-3xl font-extrabold tracking-tight text-slate-900">{brandName}</h1>
+              <p className="mt-1.5 text-sm text-slate-500">{branding.tagline || "Sign in to the platform control center"}</p>
+            </>
+          )}
         </div>
 
         <form onSubmit={submit} className="rounded-3xl border border-slate-200 bg-white/80 p-7 shadow-xl shadow-slate-200/60 backdrop-blur-xl">

@@ -13,9 +13,11 @@ export default function AppearanceProvider() {
       if (!e.key || e.key === "nexus_appearance") apply();
     };
     window.addEventListener(APPEARANCE_EVENT, apply);
+    window.addEventListener("platform:updated", apply); // re-apply once the inherited default loads
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(APPEARANCE_EVENT, apply);
+      window.removeEventListener("platform:updated", apply);
       window.removeEventListener("storage", onStorage);
     };
   }, []);

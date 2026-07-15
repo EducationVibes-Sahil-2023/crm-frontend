@@ -7,28 +7,37 @@ import { logActivity } from "@/lib/activity";
 import {
   ACCENTS,
   APPEARANCE_EVENT,
+  BACKGROUNDS,
   DENSITIES,
   DEFAULT_APPEARANCE,
   FONTS,
   PAGE_SIZE_OPTIONS,
   RADII,
+  SIDEBAR_BG_PRESETS,
+  SIDEBAR_TEXT_PRESETS,
+  ICON_ANIMS,
   accentSwatch,
   applyAppearance,
+  bgValue,
   loadAppearance,
   saveAppearance,
   type AccentKey,
   type Appearance,
+  type BgKey,
   type Density,
   type FontKey,
   type Radius,
 } from "@/lib/appearance";
+import { getLucideForCustom } from "@/lib/lucideIcons";
+import { createElement } from "react";
 
 export default function AppearanceSetupPage() {
   const toast = useToast();
   const [a, setA] = useState<Appearance>(DEFAULT_APPEARANCE);
 
   useEffect(() => {
-    setA(loadAppearance());
+    const read = () => setA(loadAppearance());
+    read();
   }, []);
 
   // Persist + apply live + notify the rest of the app.
@@ -163,6 +172,140 @@ export default function AppearanceSetupPage() {
             </div>
           </Section>
 
+          {/* Panel background */}
+          <Section title="Panel background" desc="The background color of the main content area next to the sidebar.">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {(Object.keys(BACKGROUNDS) as BgKey[]).map((key) => {
+                const active = a.bg === key;
+                const swatch = bgValue(key, a.accent);
+                return (
+                  <button
+                    key={key}
+                    onClick={() => update({ bg: key })}
+                    className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-sm transition ${
+                      active ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span
+                      className="h-7 w-7 shrink-0 rounded-lg border border-slate-200 shadow-inner"
+                      style={{ background: swatch }}
+                    />
+                    <span className="text-xs font-medium">{BACKGROUNDS[key].label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Section>
+
+          {/* Sidebar colours */}
+          <Section title="Sidebar colours" desc="The background and text colour of the left navigation menu. The active-item colour follows your accent.">
+            <div className="space-y-3">
+              <SwatchRow
+                label="Background"
+                value={a.sidebarBg}
+                presets={SIDEBAR_BG_PRESETS}
+                onChange={(v) => update({ sidebarBg: v })}
+              />
+              <SwatchRow
+                label="Text & icons"
+                value={a.sidebarText}
+                presets={SIDEBAR_TEXT_PRESETS}
+                onChange={(v) => update({ sidebarText: v })}
+              />
+              {/* Mini preview */}
+              <div className="mt-1 flex items-center gap-2 rounded-xl p-2" style={{ backgroundColor: a.sidebarBg, color: a.sidebarText }}>
+                {["dashboard", "leads", "gmail", "settings"].map((ic) => (
+                  <span key={ic} className="inline-flex">
+                    {createElement(getLucideForCustom(ic), { size: 18, strokeWidth: a.sidebarIconStyle === "filled" ? 2.6 : 1.8 })}
+                  </span>
+                ))}
+                <span className="ml-1 text-xs font-medium">Menu preview</span>
+              </div>
+            </div>
+          </Section>
+
+          {/* Sidebar icons */}
+          <Section title="Sidebar icons" desc="Icon weight and motion for the navigation menu (modern lucide icons).">
+            <div className="space-y-4">
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-500">Icon style</p>
+                <div className="flex gap-2">
+                  {(["outline", "filled"] as const).map((s) => {
+                    const active = a.sidebarIconStyle === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => update({ sidebarIconStyle: s })}
+                        className={`flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium capitalize transition ${
+                          active ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {createElement(getLucideForCustom("dashboard"), { size: 18, strokeWidth: s === "filled" ? 2.6 : 1.8 })}
+                        {s}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-500">Icon background</p>
+                <div className="flex gap-2">
+                  {([["plain", "Plain"], ["chips", "Colour chip"]] as const).map(([val, label]) => {
+                    const active = (val === "chips") === a.sidebarIconChips;
+                    return (
+                      <button
+                        key={val}
+                        onClick={() => update({ sidebarIconChips: val === "chips" })}
+                        className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+                          active ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-500">Icon motion — hover to preview (Pulse animates continuously)</p>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                  {ICON_ANIMS.map((anim) => {
+                    const active = a.sidebarIconAnim === anim.value;
+                    const cls = anim.value === "none" ? "" : anim.value === "pulse" ? "nx-ico nx-ico-pulse" : `nx-ico nx-ico-${anim.value}`;
+                    return (
+                      <button
+                        key={anim.value}
+                        onClick={() => update({ sidebarIconAnim: anim.value })}
+                        className={`group flex flex-col items-center gap-1.5 rounded-xl border px-1 py-2.5 text-[11px] font-semibold transition ${
+                          active ? "border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500" : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span className={`inline-flex h-6 items-center ${cls}`}>
+                          {createElement(getLucideForCustom("ai"), { size: 18 })}
+                        </span>
+                        {anim.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Item descriptions</p>
+                  <p className="text-xs text-slate-500">Show a one-line subtitle under each menu label (Control-Center style).</p>
+                </div>
+                <Toggle on={a.sidebarDescriptions} onClick={() => update({ sidebarDescriptions: !a.sidebarDescriptions })} label="Item descriptions" />
+              </label>
+              <label className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-white p-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">Quick actions</p>
+                  <p className="text-xs text-slate-500">Pin a shortcut grid (New lead, Compose…) above the menu.</p>
+                </div>
+                <Toggle on={a.sidebarQuickActions} onClick={() => update({ sidebarQuickActions: !a.sidebarQuickActions })} label="Quick actions" />
+              </label>
+            </div>
+          </Section>
+
           {/* Tables */}
           <Section title="Tables" desc="Defaults for data tables across the CRM.">
             <div className="space-y-4">
@@ -200,7 +343,9 @@ export default function AppearanceSetupPage() {
         <div className="lg:col-span-1">
           <div className="sticky top-4 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Live preview</p>
-            <Preview pageSize={a.tablePageSize} />
+            <div className="rounded-2xl border border-slate-200 p-4" style={{ background: bgValue(a.bg, a.accent) }}>
+              <Preview pageSize={a.tablePageSize} />
+            </div>
           </div>
         </div>
       </div>
@@ -214,6 +359,30 @@ function Section({ title, desc, children }: { title: string; desc: string; child
       <h2 className="text-sm font-bold text-slate-800">{title}</h2>
       <p className="mb-3 mt-0.5 text-xs text-slate-500">{desc}</p>
       {children}
+    </div>
+  );
+}
+
+function SwatchRow({ label, value, presets, onChange }: { label: string; value: string; presets: string[]; onChange: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <p className="w-24 shrink-0 text-xs font-medium text-slate-500">{label}</p>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {presets.map((c) => (
+          <button
+            key={c}
+            onClick={() => onChange(c)}
+            title={c}
+            aria-label={`${label} ${c}`}
+            className={`h-7 w-7 rounded-lg ring-1 ring-inset ring-slate-200 transition ${value.toLowerCase() === c.toLowerCase() ? "outline outline-2 outline-offset-1 outline-slate-900" : "hover:scale-105"}`}
+            style={{ backgroundColor: c }}
+          />
+        ))}
+        <label className="relative flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 text-slate-400 hover:border-slate-500">
+          <Icon name="plus" className="h-4 w-4" />
+          <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
+        </label>
+      </div>
     </div>
   );
 }

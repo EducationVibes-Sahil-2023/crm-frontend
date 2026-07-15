@@ -19,7 +19,7 @@ export default function LandingPage() {
             <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl text-sm font-bold text-white" style={{ backgroundColor: accent }}>
               {cfg.brand.logoUrl ? <img src={cfg.brand.logoUrl} alt="" className="h-full w-full object-cover" /> : cfg.brand.logoText}
             </span>
-            <span className="text-lg font-bold text-slate-900">{cfg.brand.name}</span>
+            {!cfg.brand.logoOnly && <span className="text-lg font-bold text-slate-900">{cfg.brand.name}</span>}
           </div>
           <div className="flex items-center gap-2">
             <a href="#pricing" className="hidden rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 sm:block">Pricing</a>

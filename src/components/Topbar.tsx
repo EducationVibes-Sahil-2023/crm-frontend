@@ -10,6 +10,8 @@ import { useToast } from "@/components/Toast";
 import { loadNotifs, saveNotifs, subscribeNotifs } from "@/lib/notify";
 import { isVisibleTo, loadAnnouncements, saveAnnouncements, stripHtml } from "@/lib/announcements";
 import { loadConversations, loadMessages, saveConversations } from "@/lib/chat";
+import ClientMenuCustomizer from "@/components/ClientMenuCustomizer";
+import { usePermissions } from "@/components/PermissionsProvider";
 
 // A unified item shown in the navbar bell — from the notification store,
 // unread announcements, or unread chat conversations.
@@ -52,7 +54,12 @@ function Topbar({
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [menu, setMenu] = useState(false);
+  const [customize, setCustomize] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  // Only users who can access Admin Setup (client admins + granted roles) may
+  // customize the menu — same gate as the /admin-setup/appearance page.
+  const { can } = usePermissions();
+  const canCustomize = can("adminSetup", "view");
 
   // Navbar bell — merges the notification store, unread announcements and
   // unread chat messages. Live across the app + other tabs.
@@ -94,8 +101,8 @@ function Topbar({
   // Read on mount and refresh whenever the profile / any source changes.
   useEffect(() => {
     const sync = () => { setUser(getUser()); setProfile(loadProfile()); };
-    sync();
-    refresh();
+    const init = () => { sync(); setItems(buildItems()); };
+    init();
     const unsub = subscribeNotifs(refresh);
     const onStorage = (e: StorageEvent) => {
       if (!e.key || ["nexus_announcements_v2", "nexus_chat_conversations", "nexus_chat_messages"].includes(e.key)) refresh();
@@ -108,8 +115,8 @@ function Topbar({
 
   // Re-read the (same-tab) announcement/chat stores each time the bell opens.
   useEffect(() => {
-    if (notifOpen) refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const reload = () => setItems(buildItems());
+    if (notifOpen) reload();
   }, [notifOpen]);
 
   useEffect(() => {
@@ -199,6 +206,19 @@ function Topbar({
       </div>
 
       <div className="ml-auto flex items-center gap-1.5">
+        {/* Customize menu — admins / Admin-Setup roles only */}
+        {canCustomize && (
+          <button
+            onClick={() => setCustomize(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+            aria-label="Customize menu"
+            title="Customize menu"
+          >
+            <Icon name="edit" className="h-4 w-4" />
+            <span className="hidden md:inline">Customize</span>
+          </button>
+        )}
+
         {/* AI Assistant */}
         <Link
           href="/assistant"
@@ -339,6 +359,8 @@ function Topbar({
           )}
         </div>
       </div>
+
+      <ClientMenuCustomizer open={customize && canCustomize} onClose={() => setCustomize(false)} />
     </header>
   );
 }

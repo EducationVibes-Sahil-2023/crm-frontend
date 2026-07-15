@@ -1,39 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Icon, type IconName } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { getUser } from "@/lib/auth";
-import { loadIntakeLeads } from "@/lib/leadStore";
+import { loadIntakeLeads, subscribeLeads, type IntakeLead } from "@/lib/leadStore";
 import { loadTasks, statusMeta, type Task } from "@/lib/tasks";
 
 type Trend = "up" | "down" | "stable";
 
-// ---- 2026 demo data (Indian counselling CRM) ----
-const MONTHLY = [
-  { m: "Jan", enq: 120, adm: 28 },
-  { m: "Feb", enq: 138, adm: 31 },
-  { m: "Mar", enq: 152, adm: 36 },
-  { m: "Apr", enq: 144, adm: 34 },
-  { m: "May", enq: 168, adm: 41 },
-  { m: "Jun", enq: 156, adm: 38 },
-];
+// Every figure on this page is derived from REAL data: leads come from the
+// MySQL `leads` table (hydrated into the leadStore cache from /api/leads) and
+// tasks from the tasks store. No hard-coded/mock numbers.
 
-const SOURCES = [
-  { name: "Website", value: 38, color: "bg-blue-500" },
-  { name: "Referral", value: 24, color: "bg-emerald-500" },
-  { name: "Education Fair", value: 18, color: "bg-violet-500" },
-  { name: "Justdial", value: 12, color: "bg-amber-500" },
-  { name: "Walk-in", value: 8, color: "bg-rose-500" },
-];
+// A lead counts as an "admission" (converted) when its status matches these —
+// the same matcher the AI assistant uses, kept in sync for consistent numbers.
+const CONVERTED_RE = /won|admission|enrolled|convert|closed won/i;
 
-const PIPELINE = [
-  { stage: "New Enquiry", value: 156, color: "from-sky-500 to-blue-500" },
-  { stage: "Contacted", value: 112, color: "from-blue-500 to-indigo-500" },
-  { stage: "Counselled", value: 68, color: "from-indigo-500 to-violet-500" },
-  { stage: "Application", value: 41, color: "from-violet-500 to-purple-500" },
-  { stage: "Admission", value: 28, color: "from-emerald-500 to-teal-500" },
+const SOURCE_COLOR = ["bg-blue-500", "bg-emerald-500", "bg-violet-500", "bg-amber-500", "bg-rose-500", "bg-cyan-500"];
+const PIPE_COLOR = [
+  "from-sky-500 to-blue-500",
+  "from-blue-500 to-indigo-500",
+  "from-indigo-500 to-violet-500",
+  "from-violet-500 to-purple-500",
+  "from-emerald-500 to-teal-500",
+  "from-slate-400 to-slate-500",
 ];
 
 function greeting() {
@@ -42,48 +34,119 @@ function greeting() {
   if (h < 18) return "Good afternoon";
   return "Good evening";
 }
-function inr(n: number): string {
-  return `₹${n.toLocaleString("en-IN")}`;
-}
 function fmtDue(s: string): string {
   if (!s) return "No due date";
   const d = new Date(s + "T00:00:00");
   return isNaN(d.getTime()) ? s : d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
 }
+/** Parse an IntakeLead display date ("Jun 28, 2026") to a Date, or null. */
+function parseLeadDate(s: string | undefined): Date | null {
+  const v = (s ?? "").trim();
+  if (v === "" || v === "—") return null;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+function pctDelta(current: number, previous: number): { label: string; trend: Trend } {
+  if (previous === 0) return current > 0 ? { label: "New", trend: "up" } : { label: "—", trend: "stable" };
+  const change = Math.round(((current - previous) / previous) * 100);
+  if (change > 0) return { label: `+${change}%`, trend: "up" };
+  if (change < 0) return { label: `${change}%`, trend: "down" };
+  return { label: "Steady", trend: "stable" };
+}
 
 export default function DashboardPage() {
-  const [name, setName] = useState("Director");
+  const [name, setName] = useState("there");
   const [loading, setLoading] = useState(true);
+  const [leads, setLeads] = useState<IntakeLead[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [capturedCount, setCapturedCount] = useState(0);
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
-    const u = getUser();
-    if (u?.name) setName(u.name.split(" ")[0]);
-    setTasks(loadTasks());
-    setCapturedCount(loadIntakeLeads().length);
-    setNow(new Date());
-    const t = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(t);
+    const refreshLeads = () => setLeads(loadIntakeLeads().filter((l) => !l.deleted));
+    const init = () => {
+      const u = getUser();
+      if (u?.name) setName(u.name.split(" ")[0]);
+      refreshLeads();
+      setTasks(loadTasks());
+      setNow(new Date());
+    };
+    init();
+    const unsub = subscribeLeads(refreshLeads);
+    const t = setTimeout(() => setLoading(false), 400);
+    return () => { unsub(); clearTimeout(t); };
   }, []);
+
+  const stats = useMemo(() => {
+    const base = now ?? new Date();
+    // Last-6-month buckets (enquiries + admissions per month, by created date).
+    const months = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(base.getFullYear(), base.getMonth() - (5 - i), 1);
+      return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString("en-US", { month: "short" }), enq: 0, adm: 0 };
+    });
+    const idxOf = new Map(months.map((m, i) => [m.key, i]));
+
+    let converted = 0;
+    const bySource: Record<string, number> = {};
+    const byStatus: Record<string, number> = {};
+
+    for (const l of leads) {
+      const isConv = CONVERTED_RE.test(l.status);
+      if (isConv) converted++;
+      const src = l.source && l.source !== "—" ? l.source : "Unknown";
+      bySource[src] = (bySource[src] || 0) + 1;
+      const st = l.status && l.status !== "—" ? l.status : "Unspecified";
+      byStatus[st] = (byStatus[st] || 0) + 1;
+      const d = parseLeadDate(l.createdDate);
+      if (d) {
+        const i = idxOf.get(`${d.getFullYear()}-${d.getMonth()}`);
+        if (i != null) { months[i].enq++; if (isConv) months[i].adm++; }
+      }
+    }
+
+    const total = leads.length;
+    const thisMonth = months[5].enq;
+    const lastMonth = months[4].enq;
+    const admThis = months[5].adm;
+    const admLast = months[4].adm;
+    const conversion = total ? Math.round((converted / total) * 1000) / 10 : 0;
+    const convSeries = months.map((m) => (m.enq ? Math.round((m.adm / m.enq) * 100) : 0));
+
+    const sources = Object.entries(bySource)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, value], i) => ({ name, value, color: SOURCE_COLOR[i % SOURCE_COLOR.length] }));
+
+    const pipeline = Object.entries(byStatus)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([stage, value], i) => ({ stage, value, color: PIPE_COLOR[i % PIPE_COLOR.length] }));
+
+    return {
+      total, thisMonth, lastMonth, converted, admThis, admLast, conversion, convSeries,
+      months, sources, pipeline,
+      enqSeries: months.map((m) => m.enq),
+      admSeries: months.map((m) => m.adm),
+    };
+  }, [leads, now]);
 
   if (loading) return <DashboardSkeleton />;
 
-  const monthLabel = now ? now.toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "June 2026";
+  const monthLabel = now ? now.toLocaleDateString("en-IN", { month: "long", year: "numeric" }) : "";
   const rangeLabel = now
     ? `${now.toLocaleDateString("en-IN", { month: "short" })} 1 – ${now.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}`
-    : "Jun 1 – Jun 25, 2026";
+    : "";
 
-  const newLeads = 156 + capturedCount;
   const openTasks = tasks.filter((t) => t.status !== "done");
   const upcoming = [...openTasks]
     .sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999"))
     .slice(0, 5);
 
-  const chartMax = Math.max(...MONTHLY.map((m) => m.enq));
-  const pipeMax = Math.max(...PIPELINE.map((p) => p.value));
-  const srcTotal = SOURCES.reduce((s, x) => s + x.value, 0);
+  const chartMax = Math.max(1, ...stats.months.map((m) => m.enq));
+  const pipeMax = Math.max(1, ...stats.pipeline.map((p) => p.value));
+  const srcTotal = stats.sources.reduce((s, x) => s + x.value, 0);
+
+  const enqDelta = pctDelta(stats.thisMonth, stats.lastMonth);
+  const admDelta = pctDelta(stats.admThis, stats.admLast);
 
   return (
     <div className="space-y-6">
@@ -93,25 +156,25 @@ export default function DashboardPage() {
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">{greeting()}, {name} 👋</h1>
-            <p className="mt-1 text-sm text-blue-100">Here&apos;s your counselling pipeline for {monthLabel}.</p>
+            <p className="mt-1 text-sm text-blue-100">Here&apos;s your live counselling pipeline{monthLabel ? ` for ${monthLabel}` : ""}.</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium ring-1 ring-white/25 backdrop-blur">
               <Icon name="calendar" className="h-4 w-4" /> {rangeLabel}
             </span>
-            <button className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50">
-              <Icon name="export" className="h-4 w-4" /> Export
-            </button>
+            <Link href="/reports/leads" className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-50">
+              <Icon name="trendUp" className="h-4 w-4" /> Reports
+            </Link>
           </div>
         </div>
       </div>
 
-      {/* Stat cards with sparklines */}
+      {/* Stat cards with sparklines — all real */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon="revenue" label="Total Revenue" value={inr(4285000)} trend="up" delta="+12%" sub="vs ₹38,23,000 last month" spark={[28, 31, 30, 35, 38, 43]} />
-        <StatCard icon="leads" label="New Enquiries" value={String(newLeads)} trend="up" delta="+11%" sub="Target: 140 / month" spark={[90, 110, 130, 120, 140, 156]} />
-        <StatCard icon="win" label="Admissions" value="38" trend="up" delta="+7%" sub="This month" spark={[28, 31, 36, 34, 41, 38]} />
-        <StatCard icon="deals" label="Conversion Rate" value="24.4%" trend="stable" delta="Steady" sub="Enquiry → admission" spark={[22, 23, 24, 23, 25, 24]} />
+        <StatCard icon="leads" label="Total Enquiries" value={String(stats.total)} trend="up" delta={`${stats.thisMonth} this month`} sub={`${stats.total} leads in the pipeline`} spark={stats.enqSeries} />
+        <StatCard icon="deals" label="New This Month" value={String(stats.thisMonth)} trend={enqDelta.trend} delta={enqDelta.label} sub={`vs ${stats.lastMonth} last month`} spark={stats.enqSeries} />
+        <StatCard icon="win" label="Admissions" value={String(stats.converted)} trend={admDelta.trend} delta={admDelta.label} sub={`${stats.admThis} this month`} spark={stats.admSeries} />
+        <StatCard icon="trendUp" label="Conversion Rate" value={`${stats.conversion}%`} trend="stable" delta="Enquiry → admission" sub={`${stats.converted} of ${stats.total} converted`} spark={stats.convSeries} />
       </div>
 
       {/* Trend + sources */}
@@ -120,46 +183,54 @@ export default function DashboardPage() {
           <div className="flex items-start justify-between">
             <div>
               <h2 className="text-base font-semibold text-slate-900">Enquiries &amp; Admissions</h2>
-              <p className="text-xs text-slate-500">Monthly performance · 2026</p>
+              <p className="text-xs text-slate-500">Last 6 months · by created date</p>
             </div>
             <div className="flex items-center gap-4 text-xs text-slate-500">
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-blue-500" /> Enquiries</span>
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" /> Admissions</span>
             </div>
           </div>
-          <div className="mt-6 flex h-56 items-end gap-3 sm:gap-6">
-            {MONTHLY.map((p) => (
-              <div key={p.m} className="flex flex-1 flex-col items-center">
-                <div className="flex w-full flex-1 items-end justify-center gap-1">
-                  <div className="w-3.5 rounded-t-md bg-gradient-to-t from-blue-600 to-blue-400 sm:w-5" style={{ height: `${(p.enq / chartMax) * 100}%` }} title={`${p.enq} enquiries`} />
-                  <div className="w-3.5 rounded-t-md bg-gradient-to-t from-emerald-600 to-emerald-400 sm:w-5" style={{ height: `${(p.adm / chartMax) * 100}%` }} title={`${p.adm} admissions`} />
+          {stats.total === 0 ? (
+            <EmptyBlock label="No leads yet — captured enquiries will chart here." />
+          ) : (
+            <div className="mt-6 flex h-56 items-end gap-3 sm:gap-6">
+              {stats.months.map((p) => (
+                <div key={p.key} className="flex flex-1 flex-col items-center">
+                  <div className="flex w-full flex-1 items-end justify-center gap-1">
+                    <div className="w-3.5 rounded-t-md bg-gradient-to-t from-blue-600 to-blue-400 sm:w-5" style={{ height: `${(p.enq / chartMax) * 100}%` }} title={`${p.enq} enquiries`} />
+                    <div className="w-3.5 rounded-t-md bg-gradient-to-t from-emerald-600 to-emerald-400 sm:w-5" style={{ height: `${(p.adm / chartMax) * 100}%` }} title={`${p.adm} admissions`} />
+                  </div>
+                  <p className="mt-3 text-xs font-medium text-slate-500">{p.label}</p>
                 </div>
-                <p className="mt-3 text-xs font-medium text-slate-500">{p.m}</p>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Lead sources */}
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-base font-semibold text-slate-900">Lead sources</h2>
           <p className="text-xs text-slate-500">Where enquiries come from</p>
-          <div className="mt-5 space-y-3.5">
-            {SOURCES.map((s) => {
-              const pct = Math.round((s.value / srcTotal) * 100);
-              return (
-                <div key={s.name}>
-                  <div className="mb-1 flex items-center justify-between text-xs">
-                    <span className="font-medium text-slate-700">{s.name}</span>
-                    <span className="text-slate-400">{pct}%</span>
+          {stats.sources.length === 0 ? (
+            <EmptyBlock label="No sources recorded yet." />
+          ) : (
+            <div className="mt-5 space-y-3.5">
+              {stats.sources.map((s) => {
+                const pct = srcTotal ? Math.round((s.value / srcTotal) * 100) : 0;
+                return (
+                  <div key={s.name}>
+                    <div className="mb-1 flex items-center justify-between text-xs">
+                      <span className="font-medium text-slate-700">{s.name}</span>
+                      <span className="text-slate-400">{pct}% · {s.value}</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className={`h-full rounded-full ${s.color}`} style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                    <div className={`h-full rounded-full ${s.color}`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
@@ -168,23 +239,27 @@ export default function DashboardPage() {
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="text-base font-semibold text-slate-900">Admission pipeline</h2>
-              <p className="text-xs text-slate-500">Enquiry to admission funnel</p>
+              <h2 className="text-base font-semibold text-slate-900">Lead pipeline</h2>
+              <p className="text-xs text-slate-500">Leads by current status</p>
             </div>
             <Link href="/leads" className="text-sm font-semibold text-blue-600 hover:underline">View leads</Link>
           </div>
-          <div className="mt-5 space-y-3">
-            {PIPELINE.map((p) => (
-              <div key={p.stage} className="flex items-center gap-3">
-                <span className="w-28 shrink-0 text-sm text-slate-600">{p.stage}</span>
-                <div className="h-7 flex-1 overflow-hidden rounded-lg bg-slate-100">
-                  <div className={`flex h-full items-center justify-end rounded-lg bg-gradient-to-r px-2 ${p.color}`} style={{ width: `${(p.value / pipeMax) * 100}%` }}>
-                    <span className="text-xs font-bold text-white">{p.value}</span>
+          {stats.pipeline.length === 0 ? (
+            <EmptyBlock label="No leads to break down yet." />
+          ) : (
+            <div className="mt-5 space-y-3">
+              {stats.pipeline.map((p) => (
+                <div key={p.stage} className="flex items-center gap-3">
+                  <span className="w-28 shrink-0 truncate text-sm text-slate-600" title={p.stage}>{p.stage}</span>
+                  <div className="h-7 flex-1 overflow-hidden rounded-lg bg-slate-100">
+                    <div className={`flex h-full items-center justify-end rounded-lg bg-gradient-to-r px-2 ${p.color}`} style={{ width: `${Math.max(8, (p.value / pipeMax) * 100)}%` }}>
+                      <span className="text-xs font-bold text-white">{p.value}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Upcoming tasks (live) */}
@@ -215,12 +290,16 @@ export default function DashboardPage() {
             </ul>
           )}
           <p className="mt-5 border-t border-slate-100 pt-4 text-xs text-slate-400">
-            {openTasks.length} open task{openTasks.length === 1 ? "" : "s"} · {capturedCount} new lead{capturedCount === 1 ? "" : "s"} captured
+            {openTasks.length} open task{openTasks.length === 1 ? "" : "s"} · {stats.total} lead{stats.total === 1 ? "" : "s"} total
           </p>
         </div>
       </div>
     </div>
   );
+}
+
+function EmptyBlock({ label }: { label: string }) {
+  return <p className="mt-6 rounded-xl border border-dashed border-slate-200 py-10 text-center text-sm text-slate-400">{label}</p>;
 }
 
 function Sparkline({ data, color }: { data: number[]; color: string }) {

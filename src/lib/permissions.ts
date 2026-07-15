@@ -86,6 +86,8 @@ export function hrefModule(href: string): string | null {
 
   if (h.startsWith("/tasks")) return "tasks";
 
+  if (h.startsWith("/marketing")) return "marketing";
+
   // Communication
   if (
     h.startsWith("/gmail") ||

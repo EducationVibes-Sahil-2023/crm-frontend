@@ -21,6 +21,7 @@ export function hrefFeature(href: string): string | null {
   if (h.startsWith("/whatsapp")) return "whatsapp";
   if (h.startsWith("/media")) return "media";
   if (h.startsWith("/announcement")) return "announcement";
+  if (h.startsWith("/marketing")) return "marketing";
   if (h.startsWith("/calendar")) return "calendar";
   if (h.startsWith("/downloads") || h.startsWith("/live-tracking") || h.startsWith("/app-security")) return "mobileApp";
   if (h.startsWith("/support-ticket")) return "support";

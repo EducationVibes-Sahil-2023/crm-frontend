@@ -4,6 +4,12 @@
 
 import { useEffect, useState } from "react";
 import { ensureSuperAdminToken } from "@/lib/superAdmin";
+// Type-only imports (erased at runtime) — avoids a require cycle, since
+// appearance.ts / navConfig.ts import loadPlatform() from here as values.
+import type { Appearance } from "@/lib/appearance";
+import type { NavConfig } from "@/lib/navConfig";
+
+const EMPTY_NAV: NavConfig = { items: {}, groups: {}, order: {} };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
@@ -12,7 +18,7 @@ export type Review = { id: string; name: string; role: string; rating: number; t
 export type Feature = { icon: string; title: string; desc: string };
 
 export type PlatformConfig = {
-  brand: { name: string; logoText: string; logoUrl: string; favicon: string; tagline: string; primaryColor: string; logoBg: string; email: string; phone: string };
+  brand: { name: string; logoText: string; logoUrl: string; favicon: string; tagline: string; primaryColor: string; logoBg: string; email: string; phone: string; logoWidth: number; logoHeight: number; logoOnly: boolean };
   landing: { heroTitle: string; heroSubtitle: string; ctaLabel: string; ctaUrl: string; features: Feature[] };
   plans: PlatformPlan[];
   reviews: Review[];
@@ -25,6 +31,11 @@ export type PlatformConfig = {
   // a module the admin deliberately switched off apart from one that simply
   // didn't exist yet — so newly-added modules aren't silently locked on upgrade.
   featureCatalog: string[];
+  // Platform-wide DEFAULTS every client workspace inherits. A client can still
+  // override these locally (Admin Setup → Theme & UI / Menu); their local choices
+  // layer on top of these as the base.
+  appearance: Partial<Appearance>; // default theme (accent, sidebar colours, panel bg, …)
+  nav: NavConfig;                  // default sidebar menu (order / rename / hide / re-icon)
 };
 
 // Every gateable module the Super Admin can switch on/off per plan, grouped for
@@ -43,6 +54,7 @@ export const PLATFORM_FEATURES: { key: string; label: string; icon: string; grou
   { key: "whatsapp", label: "WhatsApp", icon: "whatsapp", group: "Communication" },
   { key: "media", label: "Media Library", icon: "media", group: "Communication" },
   { key: "announcement", label: "Announcements", icon: "announcement", group: "Communication" },
+  { key: "marketing", label: "Marketing Campaigns", icon: "announcement", group: "Communication" },
   // Operations
   { key: "calendar", label: "Calendar", icon: "calendar", group: "Operations" },
   { key: "mobileApp", label: "Mobile App", icon: "download", group: "Operations" },
@@ -68,7 +80,7 @@ export const INTEGRATION_FEATURE_KEYS = ["intgGoogle", "intgEmail", "intgPush"] 
 
 export const DEFAULT_PLAN_FEATURES: Record<string, string[]> = {
   free: ["leads", "forms", "tasks", "calendar", "chat", "knowledge", "mobileApp", "intgPush"],
-  starter: ["leads", "forms", "leadVisitor", "callTracker", "tasks", "ai", "gmail", "chat", "whatsapp", "media", "announcement", "calendar", "mobileApp", "support", "knowledge", "intgEmail", "intgPush"],
+  starter: ["leads", "forms", "leadVisitor", "callTracker", "tasks", "ai", "gmail", "chat", "whatsapp", "media", "announcement", "marketing", "calendar", "mobileApp", "support", "knowledge", "intgEmail", "intgPush"],
   pro: [...ALL_FEATURE_KEYS],
   enterprise: [...ALL_FEATURE_KEYS],
 };
@@ -124,7 +136,7 @@ export const AUTOMATIONS: { key: string; label: string; desc: string }[] = [
 ];
 
 export const DEFAULT_PLATFORM: PlatformConfig = {
-  brand: { name: "CRM Cloud", logoText: "CC", logoUrl: "", favicon: "", tagline: "The all-in-one CRM for growing teams.", primaryColor: "#2563eb", logoBg: "#2563eb", email: "sales@nexuscrm.in", phone: "+91 98765 43210" },
+  brand: { name: "CRM Cloud", logoText: "CC", logoUrl: "", favicon: "", tagline: "The all-in-one CRM for growing teams.", primaryColor: "#2563eb", logoBg: "#2563eb", email: "sales@nexuscrm.in", phone: "+91 98765 43210", logoWidth: 100, logoHeight: 100, logoOnly: false },
   landing: {
     heroTitle: "Run your entire business from one CRM",
     heroSubtitle: "Leads, sales, HR, payments and more — beautifully integrated, multi-tenant, and ready to scale.",
@@ -153,9 +165,12 @@ export const DEFAULT_PLATFORM: PlatformConfig = {
   automation: Object.fromEntries(AUTOMATIONS.map((a) => [a.key, ["welcomeEmail", "trialReminder", "invoiceEmail"].includes(a.key)])),
   planFeatures: DEFAULT_PLAN_FEATURES,
   featureCatalog: [...ALL_FEATURE_KEYS],
+  appearance: {},
+  nav: { items: {}, groups: {}, order: {} },
 };
 
-const EVENT = "platform:updated";
+export const PLATFORM_EVENT = "platform:updated";
+const EVENT = PLATFORM_EVENT;
 
 function clone(c: PlatformConfig): PlatformConfig {
   return {
@@ -168,6 +183,10 @@ function clone(c: PlatformConfig): PlatformConfig {
     automation: { ...c.automation },
     planFeatures: Object.fromEntries(Object.entries(c.planFeatures).map(([k, v]) => [k, [...v]])),
     featureCatalog: [...(c.featureCatalog ?? ALL_FEATURE_KEYS)],
+    appearance: { ...(c.appearance ?? {}) },
+    nav: c.nav
+      ? { items: { ...c.nav.items }, groups: { ...c.nav.groups }, order: { ...c.nav.order } }
+      : { ...EMPTY_NAV },
   };
 }
 
@@ -187,6 +206,10 @@ function mergeConfig(p: Partial<PlatformConfig> | null | undefined): PlatformCon
     // Always stamp the CURRENT catalog so the next save records what this build
     // knew about, making future upgrades precise (no reliance on the heuristic).
     featureCatalog: [...ALL_FEATURE_KEYS],
+    appearance: { ...base.appearance, ...(p.appearance ?? {}) },
+    nav: p.nav && typeof p.nav === "object"
+      ? { items: p.nav.items ?? {}, groups: p.nav.groups ?? {}, order: p.nav.order ?? {} }
+      : { ...EMPTY_NAV },
   };
 }
 
@@ -194,13 +217,29 @@ function mergeConfig(p: Partial<PlatformConfig> | null | undefined): PlatformCon
 // the synchronous reads (nav/permission gating); it is hydrated from the server
 // on app load and whenever the config is saved. No browser storage is used.
 let _cache: PlatformConfig | null = null;
+// Bumped on every LOCAL save. An in-flight GET that started before a save must
+// not overwrite the fresher local cache with a now-stale server copy (that race
+// is what made an updated logo flash the old one, then the new one seconds later).
+let _writeSeq = 0;
 
 export function loadPlatform(): PlatformConfig {
   return clone(_cache ?? DEFAULT_PLATFORM);
 }
 
-function setCache(cfg: PlatformConfig): void {
+/**
+ * Seed the cache from a SERVER-fetched config on the first client render, so the
+ * brand (logo / favicon / name) is available synchronously before the UI paints
+ * — no default-then-real flash. Client-only, runs once, and never clobbers a
+ * cache that already holds live data. A normal refresh still runs afterwards.
+ */
+export function primePlatform(raw: Partial<PlatformConfig> | null | undefined): void {
+  if (typeof window === "undefined" || _cache) return;
+  _cache = mergeConfig(raw ?? null);
+}
+
+function setCache(cfg: PlatformConfig, local = false): void {
   _cache = clone(cfg);
+  if (local) _writeSeq++;
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(EVENT));
 }
 
@@ -217,10 +256,18 @@ export async function refreshPlatform(force = false): Promise<PlatformConfig> {
   if (!force && _cache && Date.now() - _lastFetch < PLATFORM_TTL) return clone(_cache);
   if (_inflight) return _inflight;
   _inflight = (async () => {
+    const seqAtStart = _writeSeq;
     try {
-      const res  = await fetch(`${API_BASE}/platform`, { headers: { "Content-Type": "application/json" } });
+      // `no-store` so the browser never serves a stale cached response.
+      const res  = await fetch(`${API_BASE}/platform`, { cache: "no-store", headers: { "Content-Type": "application/json" } });
       const data = res.ok ? await res.json() : null;
-      const cfg  = mergeConfig(data?.config ?? null);
+      // A local save landed while this GET was in flight — its result is now
+      // stale relative to what the user just changed. Keep the local cache.
+      if (_writeSeq !== seqAtStart && _cache) {
+        _lastFetch = Date.now();
+        return clone(_cache);
+      }
+      const cfg = mergeConfig(data?.config ?? null);
       setCache(cfg);
       _lastFetch = Date.now();
       return cfg;
@@ -250,11 +297,15 @@ async function postPlatform(cfg: PlatformConfig): Promise<void> {
 
 /** Update the cache immediately and persist to the backend (debounced). */
 export function savePlatform(c: PlatformConfig): void {
-  setCache(c);
+  setCache(c, true);
+  // Trust the just-saved local copy over a server fetch for the TTL window, so a
+  // refresh doesn't re-pull a not-yet-persisted (stale) config and flash the old
+  // value. The debounced POST persists it for real reloads.
+  _lastFetch = Date.now();
   if (typeof window === "undefined") return;
   if (_saveTimer) clearTimeout(_saveTimer);
   const snapshot = clone(c);
-  _saveTimer = setTimeout(() => { postPlatform(snapshot); }, 600);
+  _saveTimer = setTimeout(() => { postPlatform(snapshot); }, 250);
 }
 
 export function clearPlatformCache(): void { _cache = null; }

@@ -16,14 +16,34 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "Nexus CRM & HRMS",
-  description: "All-in-one CRM + HRMS — leads, tasks, payroll, attendance and more.",
-  manifest: "/manifest.webmanifest",
-  applicationName: "Nexus",
-  appleWebApp: { capable: true, statusBarStyle: "default", title: "Nexus" },
-  icons: { icon: "/icon.svg", apple: "/icon.svg" },
-};
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
+
+// Resolve the favicon + title on the SERVER from the saved platform config, so
+// the custom favicon is in the initial HTML <head> and shows the moment the page
+// loads (on reload) — instead of flashing the default and swapping in after
+// hydration. BrandHead still handles live updates without a reload.
+export async function generateMetadata(): Promise<Metadata> {
+  let favicon = "/icon.svg";
+  let title = "Nexus CRM & HRMS";
+  try {
+    const res = await fetch(`${API_BASE}/platform`, { next: { revalidate: 60 } });
+    if (res.ok) {
+      const brand = (await res.json())?.config?.brand ?? {};
+      if (typeof brand.favicon === "string" && brand.favicon) favicon = brand.favicon;
+      if (typeof brand.name === "string" && brand.name.trim()) title = brand.name.trim();
+    }
+  } catch {
+    /* backend offline — fall back to the build-time defaults */
+  }
+  return {
+    title,
+    description: "All-in-one CRM + HRMS — leads, tasks, payroll, attendance and more.",
+    manifest: "/manifest.webmanifest",
+    applicationName: "Nexus",
+    appleWebApp: { capable: true, statusBarStyle: "default", title: "Nexus" },
+    icons: { icon: favicon, apple: favicon },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#2563eb",

@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 export type OptionKind =
   | "status"
   | "source"
@@ -36,6 +38,40 @@ export function colorBadge(key: string): string {
 }
 export function colorDot(key: string): string {
   return COLORS.find((c) => c.key === key)?.dot ?? "bg-slate-400";
+}
+
+// ── Custom-colour support ────────────────────────────────────────────────
+// A colour value may be a preset KEY ("blue") or an arbitrary "#rrggbb" chosen
+// from the colour picker. Tailwind can't generate classes for arbitrary hex, so
+// hex colours render via the inline-style helpers below. Preset keys keep
+// working with the class-based colorBadge/colorDot for existing consumers.
+
+// Representative hex for each preset key (its Tailwind -500 shade).
+const PRESET_HEX: Record<string, string> = {
+  slate: "#64748b", blue: "#3b82f6", sky: "#0ea5e9", indigo: "#6366f1",
+  violet: "#8b5cf6", emerald: "#10b981", amber: "#f59e0b", rose: "#f43f5e",
+};
+
+/** True when a value is a literal "#rrggbb" colour (vs a preset key). */
+export function isHexColor(c: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test((c || "").trim());
+}
+
+/** Resolve a stored colour (preset key OR #rrggbb) to a concrete hex string. */
+export function colorHex(color: string): string {
+  if (isHexColor(color)) return color.trim();
+  return PRESET_HEX[color] ?? PRESET_HEX.slate;
+}
+
+/** Inline style for a solid colour dot — works for presets AND custom hex. */
+export function dotStyle(color: string): CSSProperties {
+  return { backgroundColor: colorHex(color) };
+}
+
+/** Inline style for a soft badge (tinted background + coloured text). */
+export function badgeStyle(color: string): CSSProperties {
+  const hex = colorHex(color);
+  return { backgroundColor: `${hex}1a`, color: hex };
 }
 
 export const KIND_LABELS: Record<OptionKind, string> = {

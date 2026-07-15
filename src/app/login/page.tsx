@@ -16,7 +16,9 @@ export default function LoginPage() {
   const router = useRouter();
   const toast = useToast();
   const branding = useBranding();
-  const logoBg = usePlatform().brand.logoBg;
+  const brand = usePlatform().brand;
+  const logoBg = brand.logoBg;
+  const platformName = brand.name || "CRM";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -35,11 +37,9 @@ export default function LoginPage() {
 
   // Already signed in? Skip the login screen.
   useEffect(() => {
-    if (isAuthenticated()) {
-      router.replace("/dashboard");
-    } else {
-      setCheckingSession(false);
-    }
+    const done = () => setCheckingSession(false);
+    if (isAuthenticated()) router.replace("/dashboard");
+    else done();
   }, [router]);
 
   // If AuthGuard signed us out because the account was deactivated, explain why.
@@ -51,7 +51,8 @@ export default function LoginPage() {
     }
     // Prefill the email captured during a landing-page trial signup.
     const prefill = consumePrefillEmail();
-    if (prefill) setEmail(prefill);
+    const applyPrefill = () => { if (prefill) setEmail(prefill); };
+    applyPrefill();
   }, [toast]);
 
   if (checkingSession) {
@@ -172,13 +173,13 @@ export default function LoginPage() {
             <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl text-white shadow-lg" style={{ backgroundColor: logoBg }}>
               {branding.logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={branding.logo} alt={branding.appName} className="h-full w-full object-cover" />
+                <img src={branding.logo} alt={branding.appName || platformName} className="h-full w-full object-contain" />
               ) : (
                 <HubIcon className="h-6 w-6" />
               )}
             </div>
             <div>
-              <p className="text-lg font-extrabold tracking-tight text-slate-900">{branding.appName}</p>
+              <p className="text-lg font-extrabold tracking-tight text-slate-900">{branding.appName || platformName}</p>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-400">
                 {branding.tagline || "Core Version 2026.4"}
               </p>

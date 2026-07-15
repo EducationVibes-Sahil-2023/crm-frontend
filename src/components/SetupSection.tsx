@@ -8,14 +8,54 @@ import { logActivity } from "@/lib/activity";
 import {
   COLORS,
   KIND_LABELS,
-  colorBadge,
-  colorDot,
+  badgeStyle,
+  colorHex,
+  dotStyle,
+  isHexColor,
   loadSetup,
   saveSetup,
   type OptionKind,
   type SetupData,
   type SetupOption,
 } from "@/lib/setup";
+
+/** Preset swatches + a custom colour picker. A value is either a preset key
+ * ("blue") or a literal "#rrggbb" chosen from the native colour input. */
+function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+  const custom = isHexColor(value);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-300 p-2">
+      {COLORS.map((c) => (
+        <button
+          key={c.key}
+          type="button"
+          onClick={() => onChange(c.key)}
+          title={c.label}
+          aria-label={c.label}
+          className={`h-6 w-6 rounded-full ${c.dot} transition ${value === c.key ? "ring-2 ring-slate-900 ring-offset-2" : "hover:scale-110"}`}
+        />
+      ))}
+      {/* Custom colour — native picker overlaid on a rainbow swatch. */}
+      <label
+        title="Custom colour"
+        className={`relative flex h-6 w-6 cursor-pointer items-center justify-center overflow-hidden rounded-full transition hover:scale-110 ${custom ? "ring-2 ring-slate-900 ring-offset-2" : ""}`}
+        style={custom
+          ? { backgroundColor: value }
+          : { background: "conic-gradient(from 0deg, #f43f5e, #f59e0b, #10b981, #0ea5e9, #6366f1, #8b5cf6, #f43f5e)" }}
+      >
+        <input
+          type="color"
+          value={colorHex(value)}
+          onChange={(e) => onChange(e.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Custom colour"
+        />
+        {!custom && <Icon name="edit" className="h-3 w-3 text-white drop-shadow" />}
+      </label>
+      {custom && <span className="ml-0.5 font-mono text-[11px] uppercase text-slate-500">{value}</span>}
+    </div>
+  );
+}
 
 export default function SetupSection({ kind }: { kind: OptionKind }) {
   const toast = useToast();
@@ -57,6 +97,10 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
     logActivity(`Added ${label} "${trimmed}"`, { category: "setup", target: trimmed });
   }
 
+  function setItemColor(id: string, c: string) {
+    setData((d) => ({ ...d, [kind]: d[kind].map((o) => (o.id === id ? { ...o, color: c } : o)) }));
+  }
+
   function remove(id: string, nm: string) {
     setData((d) => ({ ...d, [kind]: d[kind].filter((o) => o.id !== id) }));
     toast.info(`${label} removed`, `"${nm}" was deleted.`);
@@ -87,19 +131,15 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
             />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Color</label>
-            <div className="flex items-center gap-1.5 rounded-lg border border-slate-300 p-2">
-              {COLORS.map((c) => (
-                <button
-                  key={c.key}
-                  type="button"
-                  onClick={() => setColor(c.key)}
-                  title={c.label}
-                  aria-label={c.label}
-                  className={`h-6 w-6 rounded-full ${c.dot} transition ${color === c.key ? "ring-2 ring-slate-900 ring-offset-2" : "hover:scale-110"}`}
-                />
-              ))}
-            </div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Colour — pick a preset or a custom colour</label>
+            <ColorPicker value={color} onChange={setColor} />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Preview</label>
+            <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-medium" style={badgeStyle(color)}>
+              <span className="h-1.5 w-1.5 rounded-full" style={dotStyle(color)} />
+              {name.trim() || label}
+            </span>
           </div>
           <button type="submit" className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
             <span className="text-base leading-none">+</span> Add {label}
@@ -113,6 +153,7 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <th className="px-6 py-3">{label}</th>
+              <th className="px-6 py-3">Colour</th>
               <th className="px-6 py-3">Preview</th>
               <th className="px-6 py-3">Created By</th>
               <th className="px-6 py-3">Created</th>
@@ -124,12 +165,27 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
               <tr key={o.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 <td className="px-6 py-3">
                   <span className="flex items-center gap-2 font-medium text-slate-800">
-                    <span className={`h-2.5 w-2.5 rounded-full ${colorDot(o.color)}`} />
+                    <span className="h-2.5 w-2.5 rounded-full" style={dotStyle(o.color)} />
                     {o.name}
                   </span>
                 </td>
                 <td className="px-6 py-3">
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${colorBadge(o.color)}`}>{o.name}</span>
+                  {/* Click the swatch to recolour this option (native picker). */}
+                  <label title="Change colour" className="inline-flex cursor-pointer items-center gap-2">
+                    <span className="relative inline-flex h-6 w-6 items-center justify-center rounded-full ring-1 ring-slate-200" style={dotStyle(o.color)}>
+                      <input
+                        type="color"
+                        value={colorHex(o.color)}
+                        onChange={(e) => setItemColor(o.id, e.target.value)}
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        aria-label={`Change colour of ${o.name}`}
+                      />
+                    </span>
+                    <span className="font-mono text-[11px] uppercase text-slate-400">{colorHex(o.color)}</span>
+                  </label>
+                </td>
+                <td className="px-6 py-3">
+                  <span className="rounded-full px-2.5 py-0.5 text-xs font-medium" style={badgeStyle(o.color)}>{o.name}</span>
                 </td>
                 <td className="px-6 py-3 text-slate-600">{o.createdBy}</td>
                 <td className="px-6 py-3 text-slate-500">{o.createdAt}</td>
@@ -142,7 +198,7 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-400">
+                <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
                   No {label.toLowerCase()} options yet. Add one above.
                 </td>
               </tr>

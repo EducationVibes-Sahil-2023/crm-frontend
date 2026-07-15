@@ -47,8 +47,8 @@ export default function CallTrackerDashboard() {
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    setError(null);
+    const begin = () => { setLoading(true); setError(null); };
+    begin();
     callsApi
       .analytics(range)
       .then((d) => {

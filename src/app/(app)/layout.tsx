@@ -24,7 +24,8 @@ export default function AppLayout({
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    setCollapsed(localStorage.getItem("sidebar_collapsed") === "1");
+    const read = () => setCollapsed(localStorage.getItem("sidebar_collapsed") === "1");
+    read();
   }, []);
 
   // Stable callbacks so the memoised Sidebar/Topbar don't re-render on every
@@ -44,7 +45,10 @@ export default function AppLayout({
       <AppearanceProvider />
       <BrandingProvider />
       <PermissionsProvider>
-        <div className="flex h-screen overflow-hidden bg-slate-100">
+        <div
+          className="flex h-screen overflow-hidden bg-slate-100"
+          style={{ background: "var(--app-bg, #f1f5f9)" }}
+        >
           {/* Sidebar (desktop) */}
           <div className="hidden shrink-0 lg:block">
             <Sidebar collapsed={collapsed} onToggleCollapse={toggleCollapse} />
