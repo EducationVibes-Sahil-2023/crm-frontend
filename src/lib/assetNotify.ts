@@ -1,9 +1,11 @@
 // In-app notification store for the asset workflow, targeted by recipient role
-// (admin vs user). Local-first (localStorage) since the admin/user split is a
-// front-end "View as" simulation. Also mirrors each event into the shared
-// notify.ts email/push mock so those channels stay consistent.
+// (admin vs user). Persisted per workspace to MySQL (`app_store` via /api/store,
+// hydrated at sign-in); the admin/user split is a front-end "View as"
+// simulation. Also mirrors each event into the shared notify.ts email/push mock
+// so those channels stay consistent.
 
 import { loadNotifs, saveNotifs, sendEmail, sendPush } from "@/lib/notify";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type Recipient = "admin" | "user";
 
@@ -22,22 +24,13 @@ const KEY = "nexus_asset_notifs";
 
 export function loadAssetNotifs(): AssetNotif[] {
   if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    const parsed = raw ? (JSON.parse(raw) as AssetNotif[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = dbGet<AssetNotif[]>(KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 function save(list: AssetNotif[]): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list.slice(0, 100)));
-  } catch {
-    /* ignore quota */
-  }
+  dbSet(KEY, list.slice(0, 100));
 }
 
 export function unreadCount(list: AssetNotif[], to: Recipient): number {

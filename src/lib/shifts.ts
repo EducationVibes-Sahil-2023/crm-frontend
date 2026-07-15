@@ -1,5 +1,8 @@
 // Work shifts & timing — defined in Admin Setup, used by Attendance.
+// Persisted to MySQL (per-workspace `app_store` via /api/store), hydrated at
+// sign-in — no browser localStorage.
 import { listDirectory } from "@/lib/directory";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type Shift = {
   id: string;
@@ -22,17 +25,10 @@ const SHIFTS_KEY = "hr_shifts_v1";
 const ASSIGN_KEY = "hr_shift_assignments_v1";
 
 function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  return dbGet<T>(key, fallback);
 }
 function write<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  dbSet<T>(key, value);
 }
 
 export function loadShifts(): Shift[] {

@@ -6,7 +6,7 @@ import { useToast } from "@/components/Toast";
 import SuperAdminCredentials from "@/components/SuperAdminCredentials";
 import { getSuperAdmin } from "@/lib/superAdmin";
 import { readLogo } from "@/lib/branding";
-import { DEFAULT_SA_PROFILE, loadSuperAdminProfile, saveSuperAdminProfile, type SuperAdminProfile } from "@/lib/superAdminProfile";
+import { DEFAULT_SA_PROFILE, hydrateSuperAdminProfile, loadSuperAdminProfile, saveSuperAdminProfile, type SuperAdminProfile } from "@/lib/superAdminProfile";
 
 function initials(name: string): string {
   return name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("") || "SA";
@@ -18,8 +18,11 @@ export default function SuperAdminProfilePage() {
   const [p, setP] = useState<SuperAdminProfile>(DEFAULT_SA_PROFILE);
 
   useEffect(() => {
-    const read = () => setP(loadSuperAdminProfile());
-    read();
+    let alive = true;
+    const read = () => { if (alive) setP(loadSuperAdminProfile()); };
+    read();                              // instant from cache (may be empty)
+    void hydrateSuperAdminProfile().then(read); // then refresh from the DB
+    return () => { alive = false; };
   }, []);
 
   const sa = getSuperAdmin();

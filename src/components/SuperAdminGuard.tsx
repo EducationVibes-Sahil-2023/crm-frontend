@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isSuperAdmin } from "@/lib/superAdmin";
+import { hydrateSuperAdminProfile } from "@/lib/superAdminProfile";
 
 /** Gates the /super-admin console behind the elevated super-admin login. */
 export default function SuperAdminGuard({ children }: { children: React.ReactNode }) {
@@ -10,11 +11,15 @@ export default function SuperAdminGuard({ children }: { children: React.ReactNod
   const [checked, setChecked] = useState(false);
 
   useEffect(() => {
-    if (!isSuperAdmin()) {
-      router.replace("/admin/login");
-      return;
-    }
-    setChecked(true);
+    const check = () => {
+      if (!isSuperAdmin()) {
+        router.replace("/admin/login");
+        return;
+      }
+      void hydrateSuperAdminProfile(); // fill the profile cache from the DB
+      setChecked(true);
+    };
+    check();
   }, [router]);
 
   if (!checked) {

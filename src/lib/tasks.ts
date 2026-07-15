@@ -1,7 +1,8 @@
-// Local-first task tracker store. Persists to localStorage so the module works
-// without a backend; swap these helpers for `api` calls later.
+// Task tracker store — persisted per workspace to MySQL (`app_store` via
+// /api/store, hydrated at sign-in). No browser localStorage.
 
 import { colorBadge, colorDot } from "@/lib/setup";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type TaskStatus = "todo" | "in_progress" | "review" | "done";
 // A priority is identified by its id; the set is user-managed (see below).
@@ -41,26 +42,13 @@ const DEFAULT_PRIORITIES: Priority[] = [
 
 export function loadPriorities(): Priority[] {
   if (typeof window === "undefined") return DEFAULT_PRIORITIES;
-  try {
-    const raw = window.localStorage.getItem(PRIORITY_KEY);
-    if (!raw) {
-      window.localStorage.setItem(PRIORITY_KEY, JSON.stringify(DEFAULT_PRIORITIES));
-      return DEFAULT_PRIORITIES;
-    }
-    const parsed = JSON.parse(raw) as Priority[];
-    return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_PRIORITIES;
-  } catch {
-    return DEFAULT_PRIORITIES;
-  }
+  const parsed = dbGet<Priority[]>(PRIORITY_KEY, []);
+  return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_PRIORITIES;
 }
 
 export function savePriorities(list: Priority[]): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PRIORITY_KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  dbSet(PRIORITY_KEY, list);
 }
 
 // Look up display metadata for a priority id within a given set.
@@ -188,33 +176,20 @@ const SEED: Task[] = [
 
 export function loadTasks(): Task[] {
   if (typeof window === "undefined") return SEED;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) {
-      window.localStorage.setItem(KEY, JSON.stringify(SEED));
-      return SEED;
-    }
-    const parsed = JSON.parse(raw) as Task[];
-    if (!Array.isArray(parsed)) return SEED;
-    return parsed.map((t) => ({
-      ...t,
-      assigneeEmails: t.assigneeEmails ?? [],
-      tags: t.tags ?? [],
-      comments: t.comments ?? [],
-      activity: t.activity ?? [],
-    }));
-  } catch {
-    return SEED;
-  }
+  const parsed = dbGet<Task[]>(KEY, []);
+  if (!Array.isArray(parsed) || !parsed.length) return SEED;
+  return parsed.map((t) => ({
+    ...t,
+    assigneeEmails: t.assigneeEmails ?? [],
+    tags: t.tags ?? [],
+    comments: t.comments ?? [],
+    activity: t.activity ?? [],
+  }));
 }
 
 export function saveTasks(list: Task[]): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* ignore */
-  }
+  dbSet(KEY, list);
 }
 
 // ---- date helpers -----------------------------------------------------------

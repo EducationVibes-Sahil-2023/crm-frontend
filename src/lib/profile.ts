@@ -1,6 +1,9 @@
-// Local-first user profile store. Holds the "extra" profile fields that aren't
-// part of the auth User (name/username/email live in auth). Persists to
-// localStorage so it works without a backend; swap for `api` calls later.
+// Per-user profile store. Holds the "extra" profile fields that aren't part of
+// the auth User (name/username/email live in auth). Persisted per-user to MySQL
+// (workspace `app_store`, key namespaced by user id, via /api/store) — no
+// localStorage, so two users in a workspace never share a profile.
+
+import { userGet, userSet } from "@/lib/userStore";
 
 export type SocialLinks = {
   website: string;
@@ -76,29 +79,19 @@ const DEFAULT_PROFILE: Profile = {
 
 export function loadProfile(): Profile {
   if (typeof window === "undefined") return { ...DEFAULT_PROFILE };
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_PROFILE };
-    const parsed = JSON.parse(raw) as Partial<Profile>;
-    // Merge so newly-added fields always have a value.
-    return {
-      ...DEFAULT_PROFILE,
-      ...parsed,
-      social: { ...DEFAULT_PROFILE.social, ...(parsed.social ?? {}) },
-      notif: { ...DEFAULT_PROFILE.notif, ...(parsed.notif ?? {}) },
-    };
-  } catch {
-    return { ...DEFAULT_PROFILE };
-  }
+  const parsed = userGet<Partial<Profile>>(STORAGE_KEY, {});
+  // Merge so newly-added fields always have a value.
+  return {
+    ...DEFAULT_PROFILE,
+    ...parsed,
+    social: { ...DEFAULT_PROFILE.social, ...(parsed.social ?? {}) },
+    notif: { ...DEFAULT_PROFILE.notif, ...(parsed.notif ?? {}) },
+  };
 }
 
 export function saveProfile(p: Profile): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(p));
-  } catch {
-    /* ignore quota errors */
-  }
+  userSet(STORAGE_KEY, p);
 }
 
 export function initials(name: string): string {

@@ -1,4 +1,7 @@
 // Which User-form fields are mandatory — configurable in Admin Setup.
+// Persisted to MySQL (per-workspace `app_store` via /api/store) — no localStorage.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type UserFieldKey =
   | "name" | "email" | "phone" | "designation" | "department" | "role"
@@ -39,16 +42,9 @@ const STORAGE_KEY = "user_field_config_v1";
 export function loadFieldConfig(): FieldConfig {
   const cfg: FieldConfig = { ...DEFAULT_FIELD_CONFIG };
   if (typeof window === "undefined") return cfg;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<FieldConfig>;
-      for (const f of USER_FIELDS) {
-        if (typeof parsed[f.key] === "boolean") cfg[f.key] = parsed[f.key] as boolean;
-      }
-    }
-  } catch {
-    // ignore — fall back to defaults
+  const parsed = dbGet<Partial<FieldConfig>>(STORAGE_KEY, {});
+  for (const f of USER_FIELDS) {
+    if (typeof parsed[f.key] === "boolean") cfg[f.key] = parsed[f.key] as boolean;
   }
   // Locked fields are always required.
   for (const f of USER_FIELDS) if (f.locked) cfg[f.key] = true;
@@ -57,5 +53,5 @@ export function loadFieldConfig(): FieldConfig {
 
 export function saveFieldConfig(cfg: FieldConfig): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  dbSet(STORAGE_KEY, cfg);
 }

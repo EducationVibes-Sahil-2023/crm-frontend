@@ -1,8 +1,10 @@
 // CRM branding — logo + app name/tagline. Admins change it under
-// Admin Setup → Branding; it's stored in localStorage and applied live to the
-// sidebar, login screen and browser tab title.
+// Admin Setup → Branding; it's persisted per workspace to MySQL (`app_store`
+// via /api/store, hydrated at sign-in) and applied live to the sidebar, login
+// screen and browser tab title.
 
 import { useEffect, useState } from "react";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type Branding = {
   appName: string;        // optional — falls back to the workspace/platform name
@@ -30,17 +32,12 @@ export const MAX_LOGO_BYTES = 512 * 1024; // 512 KB
 
 export function loadBranding(): Branding {
   if (typeof window === "undefined") return DEFAULT_BRANDING;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    return raw ? { ...DEFAULT_BRANDING, ...(JSON.parse(raw) as Partial<Branding>) } : DEFAULT_BRANDING;
-  } catch {
-    return DEFAULT_BRANDING;
-  }
+  return { ...DEFAULT_BRANDING, ...dbGet<Partial<Branding>>(KEY, {}) };
 }
 
 export function saveBranding(b: Branding): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify(b));
+  dbSet(KEY, b);
   window.dispatchEvent(new CustomEvent(EVENT));
 }
 

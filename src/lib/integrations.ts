@@ -1,4 +1,7 @@
-// Google + email integrations — configured in Admin Setup.
+// Google + email integrations — configured in Admin Setup. Persisted per
+// workspace to MySQL (`app_store` via /api/store, hydrated at sign-in).
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type SmtpEncryption = "none" | "ssl" | "tls";
 export type SyncDirection = "off" | "import" | "export" | "two-way";
@@ -60,20 +63,13 @@ export function loadIntegrations(): IntegrationsConfig {
   if (typeof window === "undefined") return clone(DEFAULT_INTEGRATIONS);
   if (_cache) return clone(_cache);
   const cfg = clone(DEFAULT_INTEGRATIONS);
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const p = JSON.parse(raw) as Partial<IntegrationsConfig>;
-      if (p.google) Object.assign(cfg.google, p.google, { scopes: { ...cfg.google.scopes, ...(p.google.scopes ?? {}) } });
-      if (p.calendar) Object.assign(cfg.calendar, p.calendar);
-      if (p.meet) Object.assign(cfg.meet, p.meet);
-      if (p.sheets) Object.assign(cfg.sheets, p.sheets);
-      if (p.gmail) Object.assign(cfg.gmail, p.gmail);
-      if (p.smtp) Object.assign(cfg.smtp, p.smtp);
-    }
-  } catch {
-    // ignore — fall back to defaults
-  }
+  const p = dbGet<Partial<IntegrationsConfig>>(STORAGE_KEY, {});
+  if (p.google) Object.assign(cfg.google, p.google, { scopes: { ...cfg.google.scopes, ...(p.google.scopes ?? {}) } });
+  if (p.calendar) Object.assign(cfg.calendar, p.calendar);
+  if (p.meet) Object.assign(cfg.meet, p.meet);
+  if (p.sheets) Object.assign(cfg.sheets, p.sheets);
+  if (p.gmail) Object.assign(cfg.gmail, p.gmail);
+  if (p.smtp) Object.assign(cfg.smtp, p.smtp);
   _cache = cfg;
   return clone(cfg);
 }
@@ -81,7 +77,7 @@ export function loadIntegrations(): IntegrationsConfig {
 export function saveIntegrations(cfg: IntegrationsConfig): void {
   _cache = clone(cfg);
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  dbSet(STORAGE_KEY, cfg);
 }
 
 /** Drop the cached config so the next loadIntegrations() re-reads storage. */

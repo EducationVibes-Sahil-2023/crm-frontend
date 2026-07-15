@@ -1,5 +1,9 @@
 // Work types (WFH / Office / Outside) and geofenced office locations.
 // Defined by the admin; used by Attendance to allow/deny geofenced logins.
+// Persisted to MySQL (per-workspace `app_store` via /api/store), hydrated at
+// sign-in — no browser localStorage.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type WorkType = { id: string; name: string; geofenced: boolean; color: string };
 
@@ -27,17 +31,10 @@ const TYPES_KEY = "work_types_v1";
 const LOC_KEY = "work_locations_v1";
 
 function read<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  return dbGet<T>(key, fallback);
 }
 function write<T>(key: string, value: T): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  dbSet<T>(key, value);
 }
 
 export function loadWorkTypes(): WorkType[] {

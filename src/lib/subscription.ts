@@ -1,4 +1,7 @@
-// Subscription plans — active plan + upgrade/downgrade, stored per workspace.
+// Subscription plans — active plan + upgrade/downgrade, stored per workspace
+// in MySQL (`app_store` via /api/store, hydrated at sign-in) — no localStorage.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type BillingCycle = "monthly" | "yearly";
 
@@ -80,22 +83,12 @@ if (typeof window !== "undefined") {
 export function loadSubscription(): Subscription {
   if (typeof window === "undefined") return { ...DEFAULT_SUB };
   if (_cache) return { ..._cache };
-  let result: Subscription;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      result = { ...DEFAULT_SUB };
-    } else {
-      const p = JSON.parse(raw) as Partial<Subscription>;
-      result = {
-        planId: getPlan(p.planId ?? "") ? (p.planId as string) : DEFAULT_SUB.planId,
-        cycle: p.cycle === "yearly" ? "yearly" : "monthly",
-        since: typeof p.since === "string" ? p.since : DEFAULT_SUB.since,
-      };
-    }
-  } catch {
-    result = { ...DEFAULT_SUB };
-  }
+  const p = dbGet<Partial<Subscription>>(STORAGE_KEY, {});
+  const result: Subscription = {
+    planId: getPlan(p.planId ?? "") ? (p.planId as string) : DEFAULT_SUB.planId,
+    cycle: p.cycle === "yearly" ? "yearly" : "monthly",
+    since: typeof p.since === "string" ? p.since : DEFAULT_SUB.since,
+  };
   _cache = result;
   return { ...result };
 }
@@ -103,7 +96,7 @@ export function loadSubscription(): Subscription {
 export function saveSubscription(sub: Subscription): void {
   _cache = { ...sub };
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sub));
+  dbSet(STORAGE_KEY, sub);
 }
 
 /** Drop the cached subscription so the next loadSubscription() re-reads storage. */

@@ -1,11 +1,13 @@
-// CRM appearance / theme settings. Stored in localStorage and applied at runtime
-// by overriding Tailwind v4's CSS color + radius tokens on <html>, plus the root
-// font-size (density) and body font. Because Tailwind v4 utilities reference
-// these variables, changing them re-themes the whole app — no per-component work.
+// CRM appearance / theme settings. Persisted per workspace to MySQL (`app_store`
+// via /api/store, hydrated at sign-in) and applied at runtime by overriding
+// Tailwind v4's CSS color + radius tokens on <html>, plus the root font-size
+// (density) and body font. Because Tailwind v4 utilities reference these
+// variables, changing them re-themes the whole app — no per-component work.
 
 import { useEffect, useState } from "react";
 import { ICON_ANIMS, type IconAnim } from "@/lib/adminMenu";
 import { loadPlatform } from "@/lib/platform";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export { ICON_ANIMS, type IconAnim };
 
@@ -141,22 +143,12 @@ function baseAppearance(): Appearance {
 export function loadAppearance(): Appearance {
   if (typeof window === "undefined") return { ...DEFAULT_APPEARANCE };
   const base = baseAppearance();
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return base;
-    return { ...base, ...(JSON.parse(raw) as Partial<Appearance>) };
-  } catch {
-    return base;
-  }
+  return { ...base, ...dbGet<Partial<Appearance>>(KEY, {}) };
 }
 
 export function saveAppearance(a: Appearance): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(a));
-  } catch {
-    /* ignore */
-  }
+  dbSet(KEY, a);
   // Always notify live consumers (sidebar, etc.) so a save never leaves the UI
   // stale — callers no longer need to remember to dispatch the event themselves.
   window.dispatchEvent(new Event(APPEARANCE_EVENT));

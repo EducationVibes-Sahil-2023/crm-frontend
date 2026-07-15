@@ -1,5 +1,8 @@
 // Lead-form field configuration — which built-in fields are mandatory, plus
 // admin-defined custom fields. All configurable from Admin Setup → Lead Fields.
+// Persisted to MySQL (per-workspace `app_store` via /api/store) — no localStorage.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type LeadFieldKey =
   | "name" | "email" | "company" | "phone" | "city" | "state"
@@ -31,16 +34,9 @@ const CONFIG_KEY = "lead_field_config_v1";
 export function loadLeadFieldConfig(): LeadFieldConfig {
   const cfg: LeadFieldConfig = { ...DEFAULT_LEAD_FIELD_CONFIG };
   if (typeof window === "undefined") return cfg;
-  try {
-    const raw = window.localStorage.getItem(CONFIG_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<LeadFieldConfig>;
-      for (const f of LEAD_FIELDS) {
-        if (typeof parsed[f.key] === "boolean") cfg[f.key] = parsed[f.key] as boolean;
-      }
-    }
-  } catch {
-    // ignore — fall back to defaults
+  const parsed = dbGet<Partial<LeadFieldConfig>>(CONFIG_KEY, {});
+  for (const f of LEAD_FIELDS) {
+    if (typeof parsed[f.key] === "boolean") cfg[f.key] = parsed[f.key] as boolean;
   }
   // Locked fields are always required.
   for (const f of LEAD_FIELDS) if (f.locked) cfg[f.key] = true;
@@ -49,7 +45,7 @@ export function loadLeadFieldConfig(): LeadFieldConfig {
 
 export function saveLeadFieldConfig(cfg: LeadFieldConfig): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+  dbSet(CONFIG_KEY, cfg);
 }
 
 // ---- Custom (admin-defined) lead fields --------------------------------
@@ -69,18 +65,13 @@ const CUSTOM_KEY = "lead_custom_fields_v1";
 
 export function loadCustomFields(): LeadCustomField[] {
   if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(CUSTOM_KEY);
-    const parsed = raw ? (JSON.parse(raw) as LeadCustomField[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+  const parsed = dbGet<LeadCustomField[]>(CUSTOM_KEY, []);
+  return Array.isArray(parsed) ? parsed : [];
 }
 
 export function saveCustomFields(list: LeadCustomField[]): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(CUSTOM_KEY, JSON.stringify(list));
+  dbSet(CUSTOM_KEY, list);
 }
 
 export function makeCustomField(

@@ -1,10 +1,12 @@
 // Sidebar menu customization. Admins can reorder (sequence), rename, re-slug,
-// re-icon and hide menu items + reorder groups. Stored in localStorage and
-// merged over the static base menu (nav.ts) at render time, so the whole
-// sidebar re-themes with no per-item wiring — mirrors the appearance store.
+// re-icon and hide menu items + reorder groups. Persisted per workspace to
+// MySQL (`app_store` via /api/store, hydrated at sign-in) and merged over the
+// static base menu (nav.ts) at render time, so the whole sidebar re-themes with
+// no per-item wiring — mirrors the appearance store.
 
 import { NAV_GROUPS, type NavGroup, type NavItem } from "@/lib/nav";
 import { loadPlatform } from "@/lib/platform";
+import { dbGet, dbSet } from "@/lib/dbStore";
 import type { IconName } from "@/components/icons";
 
 // A per-item override, keyed by the item's ORIGINAL identity (see itemKey).
@@ -80,23 +82,14 @@ function mergeNavConfigs(a: NavConfig, b: Partial<NavConfig>): NavConfig {
 export function loadNavConfig(): NavConfig {
   const base = typeof window === "undefined" ? structuredCloneCfg(EMPTY_NAV_CONFIG) : platformNavDefault();
   if (typeof window === "undefined") return base;
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return base;
-    return mergeNavConfigs(base, JSON.parse(raw) as Partial<NavConfig>);
-  } catch {
-    return base;
-  }
+  const saved = dbGet<Partial<NavConfig> | null>(KEY, null);
+  return saved ? mergeNavConfigs(base, saved) : base;
 }
 
 export function saveNavConfig(cfg: NavConfig): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(cfg));
-    window.dispatchEvent(new Event(NAV_CONFIG_EVENT));
-  } catch {
-    /* ignore */
-  }
+  dbSet(KEY, cfg);
+  window.dispatchEvent(new Event(NAV_CONFIG_EVENT));
 }
 
 function structuredCloneCfg(c: NavConfig): NavConfig {

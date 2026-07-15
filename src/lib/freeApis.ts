@@ -1,5 +1,7 @@
 // Free / freemium third-party API integrations — configured in Admin Setup → Integrations.
+// Persisted per workspace to MySQL (`app_store` via /api/store, hydrated at sign-in).
 import type { IconName } from "@/components/icons";
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type FreeApiMeta = {
   key: string;
@@ -42,23 +44,17 @@ const STORAGE_KEY = "free_apis_v1";
 export function loadFreeApis(): FreeApiConfig {
   const cfg = defaultFreeApis();
   if (typeof window === "undefined") return cfg;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return cfg;
-    const parsed = JSON.parse(raw) as Partial<FreeApiConfig>;
-    for (const a of FREE_APIS) {
-      const e = parsed[a.key];
-      if (e) cfg[a.key] = { enabled: !!e.enabled, credential: typeof e.credential === "string" ? e.credential : "" };
-    }
-  } catch {
-    // ignore — fall back to defaults
+  const parsed = dbGet<Partial<FreeApiConfig>>(STORAGE_KEY, {});
+  for (const a of FREE_APIS) {
+    const e = parsed[a.key];
+    if (e) cfg[a.key] = { enabled: !!e.enabled, credential: typeof e.credential === "string" ? e.credential : "" };
   }
   return cfg;
 }
 
 export function saveFreeApis(cfg: FreeApiConfig): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  dbSet(STORAGE_KEY, cfg);
 }
 
 export function countEnabledFreeApis(cfg: FreeApiConfig): number {

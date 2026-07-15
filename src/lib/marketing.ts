@@ -1,7 +1,9 @@
 // Marketing module store — WhatsApp / Email / SMS campaigns, reusable message
-// templates, and saved audiences. Local-first (localStorage) like the other
-// client modules; starts EMPTY for a fresh workspace. A "marketing:updated"
-// event lets open views refresh live, and cross-tab via the storage event.
+// templates, and saved audiences. Persisted per-workspace to MySQL (`app_store`
+// via /api/store, hydrated at sign-in); starts EMPTY for a fresh workspace. A
+// "marketing:updated" event lets open views refresh live.
+
+import { dbGet, dbSet } from "@/lib/dbStore";
 
 export type Channel = "whatsapp" | "email" | "sms";
 
@@ -81,27 +83,17 @@ function broadcast() {
 
 export function loadMarketing(): MarketingData {
   if (typeof window === "undefined") return { ...EMPTY };
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return { ...EMPTY };
-    const p = JSON.parse(raw) as Partial<MarketingData>;
-    return {
-      campaigns: Array.isArray(p.campaigns) ? p.campaigns : [],
-      templates: Array.isArray(p.templates) ? p.templates : [],
-      audiences: Array.isArray(p.audiences) ? p.audiences : [],
-    };
-  } catch {
-    return { ...EMPTY };
-  }
+  const p = dbGet<Partial<MarketingData>>(KEY, {});
+  return {
+    campaigns: Array.isArray(p.campaigns) ? p.campaigns : [],
+    templates: Array.isArray(p.templates) ? p.templates : [],
+    audiences: Array.isArray(p.audiences) ? p.audiences : [],
+  };
 }
 
 export function saveMarketing(data: MarketingData): void {
   if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(KEY, JSON.stringify(data));
-  } catch {
-    /* ignore quota */
-  }
+  dbSet(KEY, data);
   broadcast();
 }
 

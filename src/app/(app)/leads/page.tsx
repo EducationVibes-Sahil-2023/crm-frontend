@@ -8,6 +8,7 @@ import { useToast } from "@/components/Toast";
 import WaConversation from "@/components/WaConversation";
 import LeadDetailModal from "@/components/LeadDetailModal";
 import { getUser } from "@/lib/auth";
+import { userGet, userSet } from "@/lib/userStore";
 import { listDirectory } from "@/lib/directory";
 import { getTablePageSize } from "@/lib/appearance";
 import { optionNames } from "@/lib/setup";
@@ -115,9 +116,8 @@ function normalize(cols: ColState[]): ColState[] {
 
 function loadColumns(): ColState[] | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const saved = JSON.parse(raw) as { key: string; label: string; visible: boolean }[];
+    const saved = userGet<{ key: string; label: string; visible: boolean }[] | null>(STORAGE_KEY, null);
+    if (!saved) return null;
     const defKeys = COLUMN_SEED.map((c) => c.key);
     const savedKeys = new Set(saved.map((s) => s.key));
     if (saved.length !== defKeys.length || !defKeys.every((k) => savedKeys.has(k))) {
@@ -195,17 +195,20 @@ export default function LeadsPage() {
 
   // Load persisted column config (visibility / order / labels).
   useEffect(() => {
-    const saved = loadColumns();
-    if (saved) setColumns(saved);
-    setColsReady(true);
+    const init = () => {
+      const saved = loadColumns();
+      if (saved) setColumns(saved);
+      setColsReady(true);
+    };
+    init();
   }, []);
 
   // Persist column config so it becomes the default next time.
   useEffect(() => {
     if (!colsReady) return;
-    localStorage.setItem(
+    userSet(
       STORAGE_KEY,
-      JSON.stringify(columns.map((c) => ({ key: c.key, label: c.label, visible: c.visible }))),
+      columns.map((c) => ({ key: c.key, label: c.label, visible: c.visible })),
     );
   }, [columns, colsReady]);
 
@@ -273,7 +276,8 @@ export default function LeadsPage() {
   }, [leads]);
 
   useEffect(() => {
-    setPage(1);
+    const reset = () => setPage(1);
+    reset();
   }, [query, status, source, type, city, stateF, pageSize, showDeleted]);
 
   const total = filtered.length;
