@@ -75,6 +75,7 @@ export const DEFAULT_ADMIN_MENU: AdminMenuConfig = {
     { key: "database", href: "/admin/database", label: "Database", desc: "Inspect & backup",     icon: "database",         color: "#0d9488", hidden: false, section: "Manage" },
     { key: "demos",    href: "/admin/demos",    label: "Demos",    desc: "Booked walkthroughs",  icon: "calendar-days",    color: "#d97706", hidden: false, section: "Manage" },
     { key: "mail",     href: "/admin/mail",     label: "Mail",     desc: "Platform inbox",       icon: "mail",             color: "#dc2626", hidden: false, section: "Communication" },
+    { key: "docs",     href: "/admin/docs",     label: "Documentation", desc: "Manual, demos & media", icon: "book-open",    color: "#059669", hidden: false, section: "Communication" },
     { key: "settings", href: "/admin/settings", label: "Settings", desc: "Branding & config",    icon: "settings",         color: "#7c3aed", hidden: false, section: "Configure" },
   ],
 };

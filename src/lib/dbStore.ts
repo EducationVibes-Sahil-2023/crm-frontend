@@ -74,12 +74,15 @@ export async function hydrateStore(force = false): Promise<void> {
   hydrating = (async () => {
     try {
       const res = await fetch(`${API_BASE}/store`, { headers: authHeaders() });
-      if (res.ok) {
-        const json = await res.json().catch(() => null);
-        const data = (json && typeof json.data === "object" && json.data) || {};
+      const json = res.ok ? await res.json().catch(() => null) : null;
+      // A 200 is not proof of a real answer. Captive portals, host bot-checks
+      // and error pages all return 200 with an HTML body; treating that as an
+      // EMPTY workspace would clear the cache and let the next save write
+      // defaults over live data. Anything that isn't our shape is a failure.
+      if (json && typeof json.data === "object" && json.data !== null) {
         cache.clear();
-        for (const [k, v] of Object.entries(data)) cache.set(k, v);
-        version = typeof json?.version === "string" ? json.version : null;
+        for (const [k, v] of Object.entries(json.data)) cache.set(k, v);
+        version = typeof json.version === "string" ? json.version : null;
         recordOk();
       } else {
         recordFail();
@@ -157,9 +160,15 @@ export async function syncStore(): Promise<boolean> {
     const res = await fetch(`${API_BASE}/store${qs}`, { headers: authHeaders() });
     if (!res.ok) { recordFail(); return false; }
     const json = await res.json().catch(() => null);
+    // Same guard as hydrate: a 200 carrying something other than our payload
+    // must not be read as "nothing changed".
+    if (!json || typeof json.data !== "object" || json.data === null) {
+      recordFail();
+      return false;
+    }
     recordOk();
 
-    const data = (json && typeof json.data === "object" && json.data) || {};
+    const data = json.data;
     let changed = false;
     for (const [k, v] of Object.entries(data)) {
       // A local edit for this key is still on its way to the server — the

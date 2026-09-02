@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
-import { SUPER_ADMIN_DEMO, isSuperAdmin, superAdminLogin } from "@/lib/superAdmin";
+import { isSuperAdmin, superAdminLogin } from "@/lib/superAdmin";
 import { usePlatform } from "@/lib/platform";
 import { useBranding } from "@/lib/branding";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const toast = useToast();
-  const [email, setEmail] = useState(SUPER_ADMIN_DEMO.email);
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState("");

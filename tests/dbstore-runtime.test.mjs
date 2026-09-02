@@ -56,6 +56,7 @@ function installFakeServer() {
     requests: [],             // every request, for assertions
     failNext: 0,              // force N failures (circuit-breaker tests)
     offline: false,
+    interstitial: false,      // serve a non-JSON 200 (host bot-check page)
   };
 
   const stamp = () => `2026-09-01 00:00:${String(state.clock).slice(-2)}`;
@@ -66,6 +67,11 @@ function installFakeServer() {
     if (state.failNext > 0) {
       state.failNext -= 1;
       return { ok: false, status: 500, json: async () => ({}) };
+    }
+    // HTTP 200 carrying an HTML body — what a captive portal or a shared host's
+    // bot-check serves in place of the API.
+    if (state.interstitial) {
+      return { ok: true, status: 200, json: async () => { throw new SyntaxError("Unexpected token <"); } };
     }
 
     const u = new URL(String(url), "http://test.local");
@@ -126,6 +132,7 @@ beforeEach(async () => {
   server.requests.length = 0;
   server.failNext = 0;
   server.offline = false;
+  server.interstitial = false;
   server.clock = 1000;
   authStub.__setToken("test-token");
 });
@@ -315,6 +322,57 @@ describe("resilience", () => {
 
     assert.equal(changed, false);
     assert.equal(db.dbGet("keep", null), "important", "cached data must survive an outage");
+  });
+});
+
+describe("a 200 that isn't our payload is a failure, not an empty workspace", () => {
+  // Regression: a shared host answered every request — /api/health included —
+  // with a 200 and a JavaScript bot-check page. hydrate read that as an empty
+  // store, cleared the cache and reported success, so the app rendered as if
+  // the workspace had no data and the next save would have written defaults
+  // over live rows.
+  test("hydrate does not report ready-with-no-data on an HTML 200", async () => {
+    server.rows.set("real", { value: "live data", version: "2026-09-01 00:00:01" });
+    await db.hydrateStore(true);
+    assert.equal(db.dbGet("real", null), "live data");
+
+    server.interstitial = true;
+    await db.hydrateStore(true);
+
+    assert.equal(
+      db.dbGet("real", null),
+      "live data",
+      "cached data must survive a garbage 200 rather than being cleared",
+    );
+  });
+
+  test("repeated HTML 200s trip the circuit breaker", async () => {
+    // Without this the client would hammer a broken host forever, each attempt
+    // wiping the cache and reporting success.
+    server.interstitial = true;
+    for (let i = 0; i < 3; i += 1) await db.hydrateStore(true);
+
+    server.requests.length = 0;
+    await db.hydrateStore(true);
+    assert.equal(server.requests.length, 0, "circuit should be open");
+  });
+
+  test("sync counts an HTML 200 as a failure so the poll backs off", async () => {
+    server.rows.set("real", { value: "live data", version: "2026-09-01 00:00:01" });
+    await db.hydrateStore(true);
+
+    server.interstitial = true;
+
+    // Reporting "no change" is not enough: if these count as successes the
+    // client polls a broken host forever. Three failures must open the circuit.
+    for (let i = 0; i < 3; i += 1) {
+      assert.equal(await db.syncStore(), false);
+    }
+    assert.equal(db.dbGet("real", null), "live data", "cache must be untouched");
+
+    server.requests.length = 0;
+    await db.syncStore();
+    assert.equal(server.requests.length, 0, "circuit should be open after repeated bad 200s");
   });
 });
 

@@ -17,13 +17,9 @@ function notifySuperAdmin(): void {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api";
 
-// Pre-filled email on the login form only. Credentials are validated SERVER-SIDE
-// against the DB (`settings.superadmin`, .env fallback) — no password is baked
-// into the bundle, so the frontend and backend can never drift out of sync.
-export const SUPER_ADMIN_DEMO = {
-  email: process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL ?? "superadmin@crm-cloud.app",
-  name: process.env.NEXT_PUBLIC_SUPER_ADMIN_NAME ?? "Platform Owner",
-};
+// No credentials — not even the login email — are baked into the bundle or read
+// from env. `settings.superadmin` in the database is the only source: the login
+// form starts empty and the server validates and returns the identity.
 
 export type SuperAdminSession = { email: string; name: string; at: string };
 

@@ -8,6 +8,7 @@ import { hydrateLeads } from "@/lib/leadStore";
 import { hydrateActivities } from "@/lib/activity";
 import { hydrateVendors } from "@/lib/vendors";
 import { hydrateSetup } from "@/lib/setup";
+import { hydrateAnnouncements } from "@/lib/announcements";
 
 // How often to re-verify the session against the backend.
 const POLL_MS = 15_000;
@@ -28,7 +29,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     // render has real data (and never saves defaults back over the DB). Leads
     // hydrate after the key/value store so the one-time blob import can read it.
     hydrateStore()
-      .then(() => Promise.all([hydrateLeads(), hydrateActivities(), hydrateVendors(), hydrateSetup()]))
+      .then(() => Promise.all([hydrateLeads(), hydrateActivities(), hydrateVendors(), hydrateSetup(), hydrateAnnouncements()]))
       // Then keep polling so edits made on another device (or by a teammate)
       // appear here without a reload — the cache stays a live view of the DB.
       .then(() => startStoreSync())

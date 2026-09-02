@@ -1,9 +1,15 @@
-// Announcements store. Persisted to the per-tenant database (app_store via
-// dbStore) — no localStorage, no seeded demo announcements.
+// Announcements store — normalised MySQL tables via /api/announcements, not a
+// JSON blob. The scalars are columns; read receipts and comments are their own
+// tables, so "who has read this" is a SQL question.
+//
+// Reads stay synchronous from an in-memory cache (hydrated at sign-in by
+// AuthGuard) so the pages keep their current shape; writes go to the backend
+// and broadcast ANNOUNCEMENTS_EVENT.
 
+import { apiRequest } from "@/lib/api";
+import { dbGet, dbSet, isStoreReady } from "@/lib/dbStore";
 import { colorBadge, colorDot } from "@/lib/setup";
 import { countInDepartments, findUser, listDirectory, type DirectoryUser } from "@/lib/directory";
-import { dbGet, dbSet } from "@/lib/dbStore";
 
 // ---- Categories (admin-managed, dynamic) ------------------------------------
 
@@ -15,7 +21,11 @@ export type Category = {
   createdAt: string; // ISO or "—"
 };
 
-const CATEGORY_KEY = "nexus_announcement_categories";
+export const ANNOUNCEMENTS_EVENT = "nexus-announcements-changed";
+
+function broadcast(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(ANNOUNCEMENTS_EVENT));
+}
 
 const DEFAULT_CATEGORIES: Category[] = [
   { id: "general", name: "General", color: "slate", createdBy: "System", createdAt: "—" },
@@ -25,13 +35,20 @@ const DEFAULT_CATEGORIES: Category[] = [
   { id: "urgent", name: "Urgent", color: "rose", createdBy: "System", createdAt: "—" },
 ];
 
+let categoryCache: Category[] = DEFAULT_CATEGORIES;
+
 export function loadCategories(): Category[] {
-  const parsed = dbGet<Category[]>(CATEGORY_KEY, DEFAULT_CATEGORIES);
-  return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_CATEGORIES;
+  return categoryCache.length ? categoryCache : DEFAULT_CATEGORIES;
 }
 
+/** Replaces the whole set — the admin screen edits the list as a unit. */
 export function saveCategories(list: Category[]): void {
-  dbSet(CATEGORY_KEY, list);
+  categoryCache = list;
+  broadcast();
+  void apiRequest("/announcement-categories", {
+    method: "PUT",
+    body: JSON.stringify({ categories: list }),
+  }).catch(() => { /* offline — the cache holds it for this session */ });
 }
 
 export function categoryStyle(categories: Category[], id: string) {
@@ -142,8 +159,6 @@ export type Announcement = {
 
 // ---- Store ------------------------------------------------------------------
 
-const KEY = "nexus_announcements_v2";
-
 function normalize(a: Partial<Announcement>): Announcement {
   return {
     id: a.id ?? `a-${Math.random().toString(36).slice(2)}`,
@@ -162,13 +177,215 @@ function normalize(a: Partial<Announcement>): Announcement {
   };
 }
 
-export function loadAnnouncements(): Announcement[] {
-  const parsed = dbGet<Announcement[]>(KEY, []);
-  return Array.isArray(parsed) ? parsed.map(normalize) : [];
+let cache: Announcement[] = [];
+let hydrated = false;
+let hydrating: Promise<void> | null = null;
+
+/** True once the announcements have been read from the backend at least once. */
+export function announcementsReady(): boolean {
+  return hydrated;
 }
 
+// Legacy app_store blobs, imported once into the new tables.
+const OLD_BOARD_KEY = "nexus_announcements_v2";
+const OLD_CATEGORY_KEY = "nexus_announcement_categories";
+const MIGRATED_FLAG = "nexus_announcements_blob_migrated_v1";
+
+/**
+ * One-time import of the legacy blobs into the announcement tables. Only runs
+ * when the tables are empty and the blob has rows, so it cannot resurrect
+ * intentionally-deleted data. The flag lives in the workspace store, so this
+ * happens once per workspace rather than once per browser.
+ */
+async function migrateBlobIfNeeded(): Promise<void> {
+  try {
+    if (dbGet<boolean>(MIGRATED_FLAG, false)) return;
+    if (!isStoreReady()) return; // dbStore not loaded yet — retry on next hydrate
+
+    const oldCats = dbGet<Category[]>(OLD_CATEGORY_KEY, []);
+    if (Array.isArray(oldCats) && oldCats.length > 0) {
+      const existing = await apiRequest<{ categories: Category[] }>("/announcement-categories");
+      // The endpoint hands back defaults for an empty table; only import when the
+      // stored set is genuinely different from those defaults.
+      const isDefaults = (existing.categories ?? []).every((c) =>
+        DEFAULT_CATEGORIES.some((d) => d.id === c.id));
+      if (isDefaults) {
+        await apiRequest("/announcement-categories", {
+          method: "PUT",
+          body: JSON.stringify({ categories: oldCats }),
+        });
+      }
+    }
+
+    const oldBoard = dbGet<Announcement[]>(OLD_BOARD_KEY, []);
+    if (Array.isArray(oldBoard) && oldBoard.length > 0) {
+      const existing = await apiRequest<{ announcements: unknown[] }>("/announcements");
+      if ((existing.announcements ?? []).length === 0) {
+        // Oldest first so the board keeps its original order.
+        for (const a of [...oldBoard].reverse()) {
+          try {
+            const n = normalize(a);
+            await apiRequest("/announcements", { method: "POST", body: JSON.stringify(payload(n)) });
+          } catch {
+            /* skip a bad row, keep importing the rest */
+          }
+        }
+      }
+    }
+
+    dbSet(MIGRATED_FLAG, true);
+  } catch {
+    /* leave the flag unset so a later hydrate can retry */
+  }
+}
+
+/** Pull the board from the database. Called by AuthGuard at sign-in. */
+export async function hydrateAnnouncements(): Promise<void> {
+  if (typeof window === "undefined") return;
+  if (hydrating) return hydrating;
+  hydrating = (async () => {
+    try {
+      await migrateBlobIfNeeded();
+      const [board, cats] = await Promise.all([
+        apiRequest<{ announcements: Partial<Announcement>[] }>("/announcements"),
+        apiRequest<{ categories: Category[] }>("/announcement-categories"),
+      ]);
+      cache = (board.announcements ?? []).map(normalize);
+      if (Array.isArray(cats.categories) && cats.categories.length) categoryCache = cats.categories;
+    } catch {
+      /* backend offline — keep whatever is cached */
+    } finally {
+      hydrated = true;
+      hydrating = null;
+      broadcast();
+    }
+  })();
+  return hydrating;
+}
+
+export function loadAnnouncements(): Announcement[] {
+  return cache.map(normalize);
+}
+
+/**
+ * Persist a whole board.
+ *
+ * The two callers (the announcements page and the topbar bell) both hand back
+ * the complete list, so this diffs against the cache and issues the matching
+ * REST calls rather than replacing a blob. Engagement changes are routed to
+ * their own endpoints, because a read receipt is a row in `announcement_reads`
+ * now, not a key in a JSON object.
+ */
 export function saveAnnouncements(list: Announcement[]): void {
-  dbSet(KEY, list);
+  const before = new Map(cache.map((a) => [a.id, a]));
+  const after = list.map(normalize);
+  cache = after;
+  broadcast();
+
+  const seen = new Set<string>();
+
+  for (const a of after) {
+    seen.add(a.id);
+    const prev = before.get(a.id);
+
+    if (!prev) {
+      void createOnServer(a);
+      continue;
+    }
+    if (contentChanged(prev, a)) void updateOnServer(a);
+
+    // Read receipts added since the last save.
+    for (const email of Object.keys(a.reads)) {
+      if (!prev.reads[email]) {
+        void apiRequest(`/announcements/${a.id}/read`, {
+          method: "POST",
+          body: JSON.stringify({ email, acknowledged: !!a.reads[email].acknowledgedAt }),
+        }).catch(() => {});
+      } else if (a.reads[email].acknowledgedAt && !prev.reads[email].acknowledgedAt) {
+        void apiRequest(`/announcements/${a.id}/read`, {
+          method: "POST",
+          body: JSON.stringify({ email, acknowledged: true }),
+        }).catch(() => {});
+      }
+    }
+
+    // Comments added since the last save (server assigns the real id).
+    const prevComments = new Set(prev.comments.map((c) => c.id));
+    for (const c of a.comments) {
+      if (!prevComments.has(c.id)) {
+        void apiRequest(`/announcements/${a.id}/comments`, {
+          method: "POST",
+          body: JSON.stringify({ text: c.text, authorEmail: c.authorEmail, authorName: c.authorName }),
+        }).catch(() => {});
+      }
+    }
+  }
+
+  for (const [id] of before) {
+    if (!seen.has(id)) {
+      void apiRequest(`/announcements/${id}`, { method: "DELETE" }).catch(() => {});
+    }
+  }
+}
+
+/** Fields that live on the announcements row itself (not the child tables). */
+function contentChanged(a: Announcement, b: Announcement): boolean {
+  return (
+    a.title !== b.title ||
+    a.body !== b.body ||
+    a.categoryId !== b.categoryId ||
+    a.pinned !== b.pinned ||
+    JSON.stringify(a.audience) !== JSON.stringify(b.audience) ||
+    JSON.stringify(a.attachments) !== JSON.stringify(b.attachments) ||
+    JSON.stringify(a.likes) !== JSON.stringify(b.likes)
+  );
+}
+
+function payload(a: Announcement) {
+  return {
+    title: a.title,
+    body: a.body,
+    categoryId: a.categoryId,
+    author: a.author,
+    authorEmail: a.authorEmail,
+    pinned: a.pinned,
+    attachments: a.attachments,
+    audience: a.audience,
+    likes: a.likes,
+    createdAt: a.createdAt,
+  };
+}
+
+async function createOnServer(a: Announcement): Promise<void> {
+  try {
+    const res = await apiRequest<{ announcement: Announcement }>("/announcements", {
+      method: "POST",
+      body: JSON.stringify(payload(a)),
+    });
+    // Swap the client-generated id for the row id so later edits target the row.
+    const real = res.announcement?.id;
+    if (real) {
+      cache = cache.map((x) => (x.id === a.id ? { ...x, id: real } : x));
+      broadcast();
+    }
+  } catch {
+    /* offline — the item stays in the cache and can be retried by a later save */
+  }
+}
+
+async function updateOnServer(a: Announcement): Promise<void> {
+  try {
+    await apiRequest(`/announcements/${a.id}`, { method: "PUT", body: JSON.stringify(payload(a)) });
+  } catch {
+    /* offline */
+  }
+}
+
+/** Subscribe to board changes (same tab). Returns an unsubscribe function. */
+export function subscribeAnnouncements(cb: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener(ANNOUNCEMENTS_EVENT, cb);
+  return () => window.removeEventListener(ANNOUNCEMENTS_EVENT, cb);
 }
 
 // ---- Misc helpers -----------------------------------------------------------
