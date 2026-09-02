@@ -44,3 +44,6 @@ next-env.d.ts
 /out/
 /android/
 /ios/
+
+# Compiled TS modules used by the node:test suite
+/tests/.compiled/

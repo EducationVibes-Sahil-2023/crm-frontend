@@ -10,7 +10,7 @@
 // LEADS_EVENT so open CRM views refresh live.
 
 import { api, type LeadRow } from "@/lib/api";
-import { dbGet, isStoreReady } from "@/lib/dbStore";
+import { dbGet, dbSet, isStoreReady } from "@/lib/dbStore";
 
 export type IntakeChannel = "Website Form" | "Excel Import" | "Webhook" | "Manual";
 
@@ -200,11 +200,13 @@ export async function hydrateLeads(force = false): Promise<void> {
 /**
  * One-time import of the legacy app_store blob (`nexus_intake_leads`) into the
  * `leads` table. Only runs when the table is empty and the blob has rows, so it
- * can't resurrect intentionally-deleted data; guarded by a localStorage flag.
+ * can't resurrect intentionally-deleted data. The one-shot flag lives in the
+ * workspace store, so the import runs once per workspace rather than once per
+ * browser.
  */
 async function migrateBlobIfNeeded(): Promise<void> {
   try {
-    if (localStorage.getItem(MIGRATED_FLAG)) return;
+    if (dbGet<boolean>(MIGRATED_FLAG, false)) return;
     if (!isStoreReady()) return; // dbStore not loaded yet — retry on next hydrate
     const blob = dbGet<IntakeLead[]>(OLD_BLOB_KEY, []);
     if (Array.isArray(blob) && blob.length > 0) {
@@ -219,7 +221,7 @@ async function migrateBlobIfNeeded(): Promise<void> {
         }
       }
     }
-    localStorage.setItem(MIGRATED_FLAG, "1");
+    dbSet(MIGRATED_FLAG, true);
   } catch {
     /* leave the flag unset so a later hydrate can retry */
   }

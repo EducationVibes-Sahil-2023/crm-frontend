@@ -3,7 +3,7 @@
 // via /api/store, hydrated at sign-in); starts EMPTY for a fresh workspace. A
 // "marketing:updated" event lets open views refresh live.
 
-import { dbGet, dbSet } from "@/lib/dbStore";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 
 export type Channel = "whatsapp" | "email" | "sms";
 
@@ -100,14 +100,11 @@ export function saveMarketing(data: MarketingData): void {
 /** Subscribe to any marketing change (same tab + cross tab). Returns unsubscribe. */
 export function subscribeMarketing(cb: () => void): () => void {
   if (typeof window === "undefined") return () => {};
-  const onStorage = (e: StorageEvent) => {
-    if (!e.key || e.key === KEY) cb();
-  };
   window.addEventListener(MARKETING_EVENT, cb);
-  window.addEventListener("storage", onStorage);
+  window.addEventListener(STORE_EVENT, cb);
   return () => {
     window.removeEventListener(MARKETING_EVENT, cb);
-    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(STORE_EVENT, cb);
   };
 }
 

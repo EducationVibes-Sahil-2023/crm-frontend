@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import "@/lib/freshStart"; // one-time: blank demo seed data so a fresh workspace starts empty
 import AuthGuard from "@/components/AuthGuard";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 import AppearanceProvider from "@/components/AppearanceProvider";
 import BrandingProvider from "@/components/BrandingProvider";
 import { PermissionsProvider } from "@/components/PermissionsProvider";
@@ -15,6 +15,8 @@ import MobileShell from "@/components/mobile/MobileShell";
 const ChatWidget = dynamic(() => import("@/components/ChatWidget"), { ssr: false });
 const AiAssistantWidget = dynamic(() => import("@/components/AiAssistantWidget"), { ssr: false });
 
+const COLLAPSE_KEY = "sidebar_collapsed";
+
 export default function AppLayout({
   children,
 }: {
@@ -23,9 +25,15 @@ export default function AppLayout({
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
 
+  // Persisted in the workspace database with the rest of the app's state, so
+  // the rail stays how the user left it on any device. The store hydrates
+  // asynchronously (AuthGuard blocks the first paint until it has), and
+  // STORE_EVENT re-reads it if it changes elsewhere.
   useEffect(() => {
-    const read = () => setCollapsed(localStorage.getItem("sidebar_collapsed") === "1");
+    const read = () => setCollapsed(dbGet(COLLAPSE_KEY, false));
     read();
+    window.addEventListener(STORE_EVENT, read);
+    return () => window.removeEventListener(STORE_EVENT, read);
   }, []);
 
   // Stable callbacks so the memoised Sidebar/Topbar don't re-render on every
@@ -33,7 +41,7 @@ export default function AppLayout({
   const toggleCollapse = useCallback(() => {
     setCollapsed((c) => {
       const next = !c;
-      localStorage.setItem("sidebar_collapsed", next ? "1" : "0");
+      dbSet(COLLAPSE_KEY, next);
       return next;
     });
   }, []);

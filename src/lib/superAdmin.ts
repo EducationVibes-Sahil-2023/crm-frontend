@@ -121,6 +121,9 @@ export function superAdminLogout(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(KEY);
   window.localStorage.removeItem(JWT_KEY);
+  // Drop the cached console preferences too, so the next owner to sign in on
+  // this machine loads their own from the database rather than seeing these.
+  void import("@/lib/superAdminPrefs").then((m) => m.resetSuperAdminPrefs());
   notifySuperAdmin();
 }
 

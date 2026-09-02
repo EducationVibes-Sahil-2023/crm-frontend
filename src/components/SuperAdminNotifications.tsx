@@ -6,6 +6,7 @@ import { Icon } from "@/components/icons";
 import { DEMOS_EVENT, loadDemos, type Demo } from "@/lib/demos";
 import { createGmailClient, type GmailListItem } from "@/lib/gmailApi";
 import { getSuperAdminToken } from "@/lib/superAdmin";
+import { hydrateSuperAdminPrefs, prefGet, prefSet, SA_PREFS_EVENT } from "@/lib/superAdminPrefs";
 
 // Timestamp of the last time the super admin opened/cleared the bell. Anything
 // newer than this counts toward the unread badge.
@@ -21,9 +22,11 @@ type Notif = {
   href: string;
 };
 
+// The "everything up to here is read" marker. Kept with the other console
+// preferences in the platform database so clearing the badge on one machine
+// clears it everywhere, instead of each browser tracking its own.
 function loadSeen(): number {
-  if (typeof window === "undefined") return 0;
-  const raw = Number(window.localStorage.getItem(SEEN_KEY));
+  const raw = Number(prefGet<number>(SEEN_KEY, 0));
   return Number.isFinite(raw) ? raw : 0;
 }
 
@@ -52,16 +55,20 @@ export default function SuperAdminNotifications() {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Demos live in localStorage and broadcast on change.
+  // Demos come from /api/platform/demos and broadcast on change. The read
+  // marker comes from the console preferences, which hydrate asynchronously —
+  // so re-read it whenever they land or change.
   useEffect(() => {
-    setSeen(loadSeen());
+    const readSeen = () => setSeen(loadSeen());
+    void hydrateSuperAdminPrefs().then(readSeen);
+    readSeen();
     const refresh = () => setDemos(loadDemos());
     refresh();
     window.addEventListener(DEMOS_EVENT, refresh);
-    window.addEventListener("storage", refresh);
+    window.addEventListener(SA_PREFS_EVENT, readSeen);
     return () => {
       window.removeEventListener(DEMOS_EVENT, refresh);
-      window.removeEventListener("storage", refresh);
+      window.removeEventListener(SA_PREFS_EVENT, readSeen);
     };
   }, []);
 
@@ -123,7 +130,7 @@ export default function SuperAdminNotifications() {
   function markAllRead() {
     const now = Date.now();
     setSeen(now);
-    window.localStorage.setItem(SEEN_KEY, String(now));
+    prefSet(SEEN_KEY, now);
   }
 
   function toggle() {

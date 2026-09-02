@@ -62,6 +62,9 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [color, setColor] = useState("blue");
+  // Inline rename of an existing option.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const label = KIND_LABELS[kind];
 
   // Keep the shared setup cache (used by lead forms/filters) in sync.
@@ -103,6 +106,41 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
   function setItemColor(id: string, c: string) {
     sync(items.map((o) => (o.id === id ? { ...o, color: c } : o)));
     updateConfig(kind, id, { color: c }).catch((e) => toast.error("Couldn't save colour", (e as Error).message));
+  }
+
+  function startEdit(o: SetupOption) {
+    setEditingId(o.id);
+    setEditName(o.name);
+  }
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+  }
+  async function saveEdit(o: SetupOption) {
+    const trimmed = editName.trim();
+    if (!trimmed) {
+      toast.error("Name required", `A ${label.toLowerCase()} needs a name.`);
+      return;
+    }
+    if (trimmed === o.name) {
+      cancelEdit();
+      return;
+    }
+    if (items.some((x) => x.id !== o.id && x.name.toLowerCase() === trimmed.toLowerCase())) {
+      toast.error("Already exists", `"${trimmed}" is already a ${label}.`);
+      return;
+    }
+    const prev = items;
+    sync(items.map((x) => (x.id === o.id ? { ...x, name: trimmed } : x))); // optimistic
+    cancelEdit();
+    try {
+      await updateConfig(kind, o.id, { name: trimmed });
+      toast.success(`${label} updated`, `Renamed to "${trimmed}".`);
+      logActivity(`Renamed ${label} "${o.name}" → "${trimmed}"`, { category: "setup", target: trimmed });
+    } catch (err) {
+      sync(prev); // revert on failure
+      toast.error("Couldn't rename", (err as Error).message);
+    }
   }
 
   async function remove(id: string, nm: string) {
@@ -175,10 +213,23 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
             {items.map((o) => (
               <tr key={o.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
                 <td className="px-6 py-3">
-                  <span className="flex items-center gap-2 font-medium text-slate-800">
-                    <span className="h-2.5 w-2.5 rounded-full" style={dotStyle(o.color)} />
-                    {o.name}
-                  </span>
+                  {editingId === o.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={dotStyle(o.color)} />
+                      <input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveEdit(o); if (e.key === "Escape") cancelEdit(); }}
+                        autoFocus
+                        className="w-full max-w-[16rem] rounded-md border border-blue-400 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                      />
+                    </div>
+                  ) : (
+                    <span className="flex items-center gap-2 font-medium text-slate-800">
+                      <span className="h-2.5 w-2.5 rounded-full" style={dotStyle(o.color)} />
+                      {o.name}
+                    </span>
+                  )}
                 </td>
                 <td className="px-6 py-3">
                   {/* Click the swatch to recolour this option (native picker). */}
@@ -200,10 +251,28 @@ export default function SetupSection({ kind }: { kind: OptionKind }) {
                 </td>
                 <td className="px-6 py-3 text-slate-600">{o.createdBy}</td>
                 <td className="px-6 py-3 text-slate-500">{o.createdAt}</td>
-                <td className="px-6 py-3 text-right">
-                  <button onClick={() => remove(o.id, o.name)} title="Delete" aria-label="Delete" className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600">
-                    <Icon name="trash" className="h-[18px] w-[18px]" />
-                  </button>
+                <td className="px-6 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    {editingId === o.id ? (
+                      <>
+                        <button onClick={() => saveEdit(o)} title="Save" aria-label="Save" className="rounded-md p-1.5 text-emerald-600 transition hover:bg-emerald-50">
+                          <Icon name="check" className="h-[18px] w-[18px]" />
+                        </button>
+                        <button onClick={cancelEdit} title="Cancel" aria-label="Cancel" className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100">
+                          <Icon name="close" className="h-[18px] w-[18px]" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => startEdit(o)} title="Rename" aria-label="Rename" className="rounded-md p-1.5 text-slate-400 transition hover:bg-blue-50 hover:text-blue-600">
+                          <Icon name="edit" className="h-[18px] w-[18px]" />
+                        </button>
+                        <button onClick={() => remove(o.id, o.name)} title="Delete" aria-label="Delete" className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600">
+                          <Icon name="trash" className="h-[18px] w-[18px]" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

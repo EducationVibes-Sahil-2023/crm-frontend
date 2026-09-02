@@ -1,9 +1,12 @@
 // Super-admin sidebar customization — position, accent, icon style, density and
-// per-item icon/colour/label/order/visibility. This is a per-browser UI
-// preference, so it lives in localStorage (not the backend platform config).
+// per-item icon/colour/label/order/visibility. Persisted in the platform
+// database under the owner's console preferences, so the layout follows the
+// platform owner across browsers and machines.
 // The layout reads it live via useAdminMenu(); the customizer writes to it.
 
 import { useEffect, useState } from "react";
+
+import { prefGet, prefSet, SA_PREFS_EVENT } from "@/lib/superAdminPrefs";
 
 export type IconAnim = "none" | "pop" | "bounce" | "spin" | "wiggle" | "pulse";
 
@@ -127,25 +130,18 @@ function mergeMenu(p: Partial<AdminMenuConfig> | null | undefined): AdminMenuCon
 }
 
 export function loadAdminMenu(): AdminMenuConfig {
-  if (typeof window === "undefined") return clone(DEFAULT_ADMIN_MENU);
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    return mergeMenu(raw ? (JSON.parse(raw) as Partial<AdminMenuConfig>) : null);
-  } catch {
-    return clone(DEFAULT_ADMIN_MENU);
-  }
+  return mergeMenu(prefGet<Partial<AdminMenuConfig> | null>(KEY, null));
 }
 
 export function saveAdminMenu(c: AdminMenuConfig): void {
-  if (typeof window === "undefined") return;
-  try { window.localStorage.setItem(KEY, JSON.stringify(c)); } catch { /* quota — ignore */ }
-  window.dispatchEvent(new CustomEvent(EVENT));
+  prefSet(KEY, c);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(EVENT));
 }
 
 export function resetAdminMenu(): void {
-  if (typeof window === "undefined") return;
-  try { window.localStorage.removeItem(KEY); } catch { /* ignore */ }
-  window.dispatchEvent(new CustomEvent(EVENT));
+  // null clears the stored key server-side, so the defaults apply again.
+  prefSet(KEY, null);
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(EVENT));
 }
 
 /** Append an alpha channel to a #rrggbb colour → e.g. tint("#4f46e5", 0.1). */
@@ -157,7 +153,8 @@ export function tint(hex: string, alpha: number): string {
 
 /**
  * Live admin-menu config for client components. Re-renders when the customizer
- * saves (same tab via the custom event, other tabs via `storage`). Returns the
+ * saves (EVENT) and when the prefs sync pulls a change made in another session
+ * (SA_PREFS_EVENT, which also fires once hydration completes). Returns the
  * config plus an updater that persists and reflects immediately.
  */
 export function useAdminMenu(): [AdminMenuConfig, (c: AdminMenuConfig) => void, () => void] {
@@ -166,8 +163,8 @@ export function useAdminMenu(): [AdminMenuConfig, (c: AdminMenuConfig) => void, 
     const read = () => setCfg(loadAdminMenu());
     read();
     window.addEventListener(EVENT, read);
-    window.addEventListener("storage", read);
-    return () => { window.removeEventListener(EVENT, read); window.removeEventListener("storage", read); };
+    window.addEventListener(SA_PREFS_EVENT, read);
+    return () => { window.removeEventListener(EVENT, read); window.removeEventListener(SA_PREFS_EVENT, read); };
   }, []);
   const update = (c: AdminMenuConfig) => { setCfg(c); saveAdminMenu(c); };
   const reset = () => { resetAdminMenu(); setCfg(loadAdminMenu()); };

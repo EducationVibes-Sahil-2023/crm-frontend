@@ -1,7 +1,8 @@
 // Multi-tenant platform: the super admin provisions client workspaces, each with
-// its own database. Client-side/localStorage to match the rest of the dashboard;
-// in production these records live in a master DB and creation triggers a real
-// `CREATE DATABASE tenant_<slug>` + migration run on the backend.
+// its own database. The tenant records themselves come from the backend
+// (`GET /api/tenants`) — provisioning runs a real `CREATE DATABASE
+// tenant_<slug>` + migration on the server. This module holds only the shared
+// types, plan pricing and presentation helpers.
 
 export type Plan = "Free" | "Starter" | "Pro" | "Enterprise";
 export const PLANS: Plan[] = ["Free", "Starter", "Pro", "Enterprise"];
@@ -78,41 +79,11 @@ export function welcomeMessage(t: Tenant, brandName = "Nexus CRM"): string {
   ].join("\n");
 }
 
-const KEY = "platform_tenants_v1";
-
 export function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 24);
 }
 export function dbNameFor(subdomain: string): string {
   return `tenant_${slugify(subdomain) || "client"}`;
-}
-
-function seed(t: Omit<Tenant, "dbName" | "dbHost"> & { dbHost?: string }): Tenant {
-  return { dbHost: DB_HOST, dbName: dbNameFor(t.subdomain), ...t };
-}
-
-const DEFAULT_TENANTS: Tenant[] = [
-  seed({ id: "t-acme", company: "Acme Education", subdomain: "acme", adminName: "Rajesh Kumar", adminEmail: "admin@acme.edu", plan: "Pro", status: "Active", region: REGIONS[0], users: 42, storageGb: 18, createdAt: "Jan 12, 2026", lastActive: "2h ago" }),
-  seed({ id: "t-brightpath", company: "BrightPath Academy", subdomain: "brightpath", adminName: "Sneha Iyer", adminEmail: "it@brightpath.in", plan: "Enterprise", status: "Active", region: REGIONS[0], users: 128, storageGb: 64, createdAt: "Feb 03, 2026", lastActive: "10m ago" }),
-  seed({ id: "t-globex", company: "Globex Tutorials", subdomain: "globex", adminName: "David Chen", adminEmail: "ops@globex.io", plan: "Starter", status: "Trial", region: REGIONS[2], users: 7, storageGb: 2, createdAt: "Jun 18, 2026", lastActive: "1d ago" }),
-  seed({ id: "t-nexus", company: "Nexus Coaching", subdomain: "nexus", adminName: "Priya Nair", adminEmail: "admin@nexus.co", plan: "Pro", status: "Active", region: REGIONS[1], users: 36, storageGb: 12, createdAt: "Mar 22, 2026", lastActive: "5h ago" }),
-  seed({ id: "t-orbit", company: "Orbit Institute", subdomain: "orbit", adminName: "Marcus Thorne", adminEmail: "admin@orbit.edu", plan: "Free", status: "Suspended", region: REGIONS[3], users: 3, storageGb: 1, createdAt: "Apr 09, 2026", lastActive: "21d ago" }),
-];
-
-export function loadTenants(): Tenant[] {
-  if (typeof window === "undefined") return DEFAULT_TENANTS.map((t) => ({ ...t }));
-  try {
-    const raw = window.localStorage.getItem(KEY);
-    if (!raw) return DEFAULT_TENANTS.map((t) => ({ ...t }));
-    const parsed = JSON.parse(raw) as Tenant[];
-    return Array.isArray(parsed) ? parsed : DEFAULT_TENANTS.map((t) => ({ ...t }));
-  } catch {
-    return DEFAULT_TENANTS.map((t) => ({ ...t }));
-  }
-}
-export function saveTenants(list: Tenant[]): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(KEY, JSON.stringify(list));
 }
 
 export function mrr(list: Tenant[]): number {

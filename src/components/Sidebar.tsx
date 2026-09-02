@@ -193,16 +193,13 @@ export default function Sidebar({
   useEffect(() => {
     const sync = () => setNavGroups(resolveNavGroups(loadNavConfig()));
     sync();
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key || e.key === "nexus_nav_config") sync();
-    };
     window.addEventListener(NAV_CONFIG_EVENT, sync);
     window.addEventListener("platform:updated", sync); // inherited default hydrated
-    window.addEventListener("storage", onStorage);
+    window.addEventListener(STORE_EVENT, sync);
     return () => {
       window.removeEventListener(NAV_CONFIG_EVENT, sync);
       window.removeEventListener("platform:updated", sync);
-      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(STORE_EVENT, sync);
     };
   }, []);
 

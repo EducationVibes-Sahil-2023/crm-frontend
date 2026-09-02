@@ -1,5 +1,7 @@
 // Web push notification configuration — managed in Admin Setup.
 
+import { dbGet, dbSet } from "@/lib/dbStore";
+
 export const PUSH_EVENTS: { key: string; label: string; desc: string }[] = [
   { key: "newLead", label: "New lead created", desc: "When a new lead enters the pipeline" },
   { key: "leadAssigned", label: "Lead assigned", desc: "When a lead is assigned to a user" },
@@ -37,24 +39,19 @@ export const DEFAULT_PUSH_CONFIG: PushConfig = {
 
 const STORAGE_KEY = "push_config_v1";
 
+// Stored in the workspace database (app_store) — this is admin-wide config, so
+// it must be the same for everyone rather than per-browser.
 export function loadPushConfig(): PushConfig {
   const cfg: PushConfig = { ...DEFAULT_PUSH_CONFIG, events: { ...DEFAULT_PUSH_CONFIG.events } };
-  if (typeof window === "undefined") return cfg;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return cfg;
-    const parsed = JSON.parse(raw) as Partial<PushConfig>;
-    Object.assign(cfg, parsed);
-    cfg.events = { ...DEFAULT_PUSH_CONFIG.events, ...(parsed.events ?? {}) };
-  } catch {
-    // ignore — fall back to defaults
-  }
+  const parsed = dbGet<Partial<PushConfig> | null>(STORAGE_KEY, null);
+  if (!parsed) return cfg;
+  Object.assign(cfg, parsed);
+  cfg.events = { ...DEFAULT_PUSH_CONFIG.events, ...(parsed.events ?? {}) };
   return cfg;
 }
 
 export function savePushConfig(cfg: PushConfig): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(cfg));
+  dbSet(STORAGE_KEY, cfg);
 }
 
 // Mock VAPID-style key generator (base64url-ish). Real keys come from the server.

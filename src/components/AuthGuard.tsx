@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { isAuthenticated, checkSession, logout } from "@/lib/auth";
-import { hydrateStore } from "@/lib/dbStore";
+import { hydrateStore, startStoreSync, stopStoreSync } from "@/lib/dbStore";
 import { hydrateLeads } from "@/lib/leadStore";
 import { hydrateActivities } from "@/lib/activity";
 import { hydrateVendors } from "@/lib/vendors";
@@ -29,6 +29,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     // hydrate after the key/value store so the one-time blob import can read it.
     hydrateStore()
       .then(() => Promise.all([hydrateLeads(), hydrateActivities(), hydrateVendors(), hydrateSetup()]))
+      // Then keep polling so edits made on another device (or by a teammate)
+      // appear here without a reload — the cache stays a live view of the DB.
+      .then(() => startStoreSync())
       .finally(() => setStoreReady(true));
 
     let active = true;
@@ -38,11 +41,10 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       if (!active) return;
       // "offline" / "ok" keep the session; only a real signal logs out.
       if (state === "inactive" || state === "invalid") {
-        if (state === "inactive" && typeof window !== "undefined") {
-          window.localStorage.setItem("nexus_logout_reason", "deactivated");
-        }
         await logout();
-        router.replace("/login");
+        // Reason travels in the URL rather than browser storage — it is a
+        // one-shot handoff to the login screen, not state worth persisting.
+        router.replace(state === "inactive" ? "/login?reason=deactivated" : "/login");
       }
     }
 
@@ -57,6 +59,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       active = false;
       window.clearInterval(id);
       document.removeEventListener("visibilitychange", onVisible);
+      stopStoreSync();
     };
   }, [router]);
 

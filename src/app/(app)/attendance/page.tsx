@@ -10,6 +10,7 @@ import { getPosition, loadWorkTypes, nearestLocation, type WorkType } from "@/li
 import { colorBadge } from "@/lib/setup";
 import SearchSelect from "@/components/SearchSelect";
 import MobileAttendance from "@/components/mobile/MobileAttendance";
+import { STORE_EVENT } from "@/lib/dbStore";
 
 const AR_STATUS_STYLE: Record<string, string> = {
   Pending: "bg-amber-100 text-amber-700",
@@ -66,13 +67,14 @@ export default function AttendancePage() {
     const tick = () => setNow(new Date());
     tick();
     const id = window.setInterval(tick, 1000);
-    // Reflect manager approvals made on the All-Attendance page.
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "hr_punches_v1") setPunches(loadPunches());
-      if (e.key === "hr_ar_v1") setArs(loadARs());
+    // Reflect manager approvals made on the All-Attendance page — including
+    // ones made in another session, which the live store sync pulls in.
+    const onStorage = () => {
+      setPunches(loadPunches());
+      setArs(loadARs());
     };
-    window.addEventListener("storage", onStorage);
-    return () => { window.clearInterval(id); window.removeEventListener("storage", onStorage); };
+    window.addEventListener(STORE_EVENT, onStorage);
+    return () => { window.clearInterval(id); window.removeEventListener(STORE_EVENT, onStorage); };
   }, []);
   useEffect(() => { if (ready) savePunches(punches); }, [punches, ready]);
   useEffect(() => { if (ready) saveARs(ars); }, [ars, ready]);

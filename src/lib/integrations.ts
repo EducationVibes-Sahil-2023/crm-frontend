@@ -1,7 +1,7 @@
 // Google + email integrations — configured in Admin Setup. Persisted per
 // workspace to MySQL (`app_store` via /api/store, hydrated at sign-in).
 
-import { dbGet, dbSet } from "@/lib/dbStore";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 
 export type SmtpEncryption = "none" | "ssl" | "tls";
 export type SyncDirection = "off" | "import" | "export" | "two-way";
@@ -53,10 +53,12 @@ function clone(c: IntegrationsConfig): IntegrationsConfig {
   };
 }
 
-// Cached parsed config — avoids re-reading/parsing localStorage on every render.
+// Cached parsed config — avoids re-reading/parsing on every render. Dropped
+// whenever the live store sync pulls new data, so the cache can't go stale
+// against the database.
 let _cache: IntegrationsConfig | null = null;
 if (typeof window !== "undefined") {
-  window.addEventListener("storage", (e) => { if (e.key === STORAGE_KEY) _cache = null; });
+  window.addEventListener(STORE_EVENT, () => { _cache = null; });
 }
 
 export function loadIntegrations(): IntegrationsConfig {

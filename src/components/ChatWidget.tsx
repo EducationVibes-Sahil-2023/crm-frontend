@@ -15,6 +15,7 @@ import {
   type Conversation,
   type Message,
 } from "@/lib/chat";
+import { STORE_EVENT } from "@/lib/dbStore";
 
 export default function ChatWidget() {
   const pathname = usePathname();
@@ -28,14 +29,12 @@ export default function ChatWidget() {
 
   // Live-sync with the full Chat page / other tabs.
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key || ["nexus_chat_conversations", "nexus_chat_messages"].includes(e.key)) {
-        setConvs(loadConversations());
-        setMsgs(loadMessages());
-      }
+    const onStoreChange = () => {
+      setConvs(loadConversations());
+      setMsgs(loadMessages());
     };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener(STORE_EVENT, onStoreChange);
+    return () => window.removeEventListener(STORE_EVENT, onStoreChange);
   }, []);
 
   // Auto-scroll the open thread to the latest message.

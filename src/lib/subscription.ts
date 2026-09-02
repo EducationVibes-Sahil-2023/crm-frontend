@@ -1,7 +1,7 @@
 // Subscription plans — active plan + upgrade/downgrade, stored per workspace
 // in MySQL (`app_store` via /api/store, hydrated at sign-in) — no localStorage.
 
-import { dbGet, dbSet } from "@/lib/dbStore";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 
 export type BillingCycle = "monthly" | "yearly";
 
@@ -74,10 +74,12 @@ export function priceFor(plan: Plan, cycle: BillingCycle): number {
   return cycle === "yearly" ? plan.monthly * 10 : plan.monthly;
 }
 
-// Cached so plan/feature gating doesn't re-parse localStorage on every render.
+// Cached so plan/feature gating doesn't re-parse on every render. Dropped
+// whenever the live store sync pulls new data, so a plan change made elsewhere
+// takes effect here without a reload.
 let _cache: Subscription | null = null;
 if (typeof window !== "undefined") {
-  window.addEventListener("storage", (e) => { if (e.key === STORAGE_KEY) _cache = null; });
+  window.addEventListener(STORE_EVENT, () => { _cache = null; });
 }
 
 export function loadSubscription(): Subscription {

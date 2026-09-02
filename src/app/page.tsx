@@ -8,7 +8,7 @@ import { useToast } from "@/components/Toast";
 import { initials } from "@/lib/branding";
 import { isAuthenticated } from "@/lib/auth";
 import { captureLead, makeIntakeLead } from "@/lib/leadStore";
-import { startTrial, TRIAL_DAYS } from "@/lib/trial";
+import { TRIAL_DAYS } from "@/lib/trial";
 import { addDemo } from "@/lib/demos";
 import Reveal from "@/components/Reveal";
 import CountUp from "@/components/CountUp";
@@ -111,11 +111,13 @@ export default function Landing() {
     setModal(null);
   }
   function startTrialFlow(lead: LeadFields) {
+    // captureLead is the record of the signup — it writes the prospect straight
+    // to the leads table. The email rides to the login form as a query param;
+    // nothing about the trial is kept in browser storage.
     captureLead(makeIntakeLead({ ...lead, referenceName: "Free Trial" }, "Website Form", { status: "New", type: "Hot" }));
-    startTrial({ name: lead.name, email: lead.email, company: lead.company, source: "form" });
     toast.success(`Your ${TRIAL_DAYS}-day free trial is active 🎉`, "Sign in to get started — we've prefilled your email.");
     setModal(null);
-    router.push("/login");
+    router.push(`/login?email=${encodeURIComponent(lead.email.trim().toLowerCase())}`);
   }
 
   return (

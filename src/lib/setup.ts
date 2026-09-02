@@ -1,5 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
+import { dbGet, dbSet } from "@/lib/dbStore";
+
 export type OptionKind =
   | "status"
   | "source"
@@ -144,8 +146,9 @@ function clone(data: SetupData): SetupData {
 // The lists live in MySQL now (per-workspace, via /api/config). We keep a
 // synchronous in-memory cache (mirrors leadStore) so the many callers of
 // loadSetup()/optionNames() stay sync; hydrateSetup() fills it from the API at
-// sign-in, and setSetupKind() keeps it fresh after edits. localStorage is a
-// last-resort offline mirror.
+// sign-in, and setSetupKind() keeps it fresh after edits. Lists that have no
+// Config controller yet fall back to the workspace store (app_store); nothing
+// is mirrored into the browser.
 export const SETUP_EVENT = "setup:changed";
 // Lists that are DB-backed by the Config controller (vendor has its own table).
 const DB_KINDS: OptionKind[] = ["status", "source", "type", "subStatus", "department", "designation", "ticketCategory", "ticketPriority", "assetCategory"];
@@ -156,30 +159,23 @@ function broadcast() {
   if (typeof window !== "undefined") window.dispatchEvent(new Event(SETUP_EVENT));
 }
 
-function readLocal(): SetupData {
-  if (typeof window === "undefined") return clone(DEFAULT_SETUP);
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return clone(DEFAULT_SETUP);
-    const p = JSON.parse(raw) as Partial<SetupData>;
-    const d = clone(DEFAULT_SETUP);
-    (Object.keys(d) as OptionKind[]).forEach((k) => { if (p[k]) d[k] = p[k]!.map((o) => ({ ...o })); });
-    return d;
-  } catch {
-    return clone(DEFAULT_SETUP);
-  }
+// Base layer for the lists that aren't served by the Config controller — read
+// from and written to the workspace database via dbStore.
+function readBase(): SetupData {
+  const p = dbGet<Partial<SetupData>>(STORAGE_KEY, {});
+  const d = clone(DEFAULT_SETUP);
+  (Object.keys(d) as OptionKind[]).forEach((k) => { if (p[k]) d[k] = p[k]!.map((o) => ({ ...o })); });
+  return d;
 }
 
-function writeLocal(data: SetupData): void {
-  if (typeof window !== "undefined") {
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch { /* quota */ }
-  }
+function writeBase(data: SetupData): void {
+  dbSet(STORAGE_KEY, data);
 }
 
 /** Pull every DB-backed list from the workspace API into the cache (sign-in). */
 export async function hydrateSetup(): Promise<void> {
   if (typeof window === "undefined") return;
-  const base = readLocal();
+  const base = readBase();
   try {
     const { listConfig } = await import("@/lib/configApi");
     const results = await Promise.all(
@@ -191,7 +187,7 @@ export async function hydrateSetup(): Promise<void> {
       base[k] = items.map((it) => ({ id: it.id, name: it.name, color: it.color || "slate", createdBy: "—", createdAt: "—" }));
     }
     cache = base;
-    writeLocal(base);
+    writeBase(base);
     broadcast();
   } catch {
     cache = base;
@@ -200,22 +196,22 @@ export async function hydrateSetup(): Promise<void> {
 
 /** Update one list in the cache (called after an edit). */
 export function setSetupKind(kind: OptionKind, items: SetupOption[]): void {
-  const c = cache ?? readLocal();
+  const c = cache ?? readBase();
   c[kind] = items.map((o) => ({ ...o }));
   cache = c;
-  writeLocal(c);
+  writeBase(c);
   broadcast();
 }
 
 export function loadSetup(): SetupData {
-  if (!cache) cache = readLocal();
+  if (!cache) cache = readBase();
   return clone(cache);
 }
 
 /** Kept for back-compat — writes the whole set to the cache + local mirror. */
 export function saveSetup(data: SetupData): void {
   cache = clone(data);
-  writeLocal(data);
+  writeBase(data);
   broadcast();
 }
 

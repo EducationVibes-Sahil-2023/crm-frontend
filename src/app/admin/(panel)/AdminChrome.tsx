@@ -14,6 +14,11 @@ import { usePlatform } from "@/lib/platform";
 import { initials } from "@/lib/branding";
 import { useAdminMenu, tint, type AdminMenuItem, type IconAnim } from "@/lib/adminMenu";
 import { getLucide } from "@/lib/lucideIcons";
+import {
+  hydrateSuperAdminPrefs, prefGet, prefSet, startPrefsSync, stopPrefsSync, SA_PREFS_EVENT,
+} from "@/lib/superAdminPrefs";
+
+const COLLAPSE_KEY = "admin_sidebar_collapsed";
 
 // Quick actions — one-tap shortcuts pinned above the nav (icons are fixed;
 // visibility is toggled from the customizer).
@@ -85,15 +90,25 @@ function Chrome({ children }: { children: React.ReactNode }) {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [acctOpen]);
-  // Desktop sidebar collapse (icon rail), persisted like the client app.
+  // Desktop sidebar collapse (icon rail). Stored with the rest of the console
+  // preferences in the platform database, so the rail state follows the owner
+  // to any machine. Hydrating also fills the menu customization cache.
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
-    const read = () => setCollapsed(localStorage.getItem("admin_sidebar_collapsed") === "1");
-    read();
+    let active = true;
+    const read = () => { if (active) setCollapsed(prefGet(COLLAPSE_KEY, false)); };
+    void hydrateSuperAdminPrefs().then(read);
+    startPrefsSync();
+    window.addEventListener(SA_PREFS_EVENT, read);
+    return () => {
+      active = false;
+      window.removeEventListener(SA_PREFS_EVENT, read);
+      stopPrefsSync();
+    };
   }, []);
   const toggleCollapsed = () => setCollapsed((c) => {
     const next = !c;
-    localStorage.setItem("admin_sidebar_collapsed", next ? "1" : "0");
+    prefSet(COLLAPSE_KEY, next);
     return next;
   });
 

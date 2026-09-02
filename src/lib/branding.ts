@@ -4,7 +4,7 @@
 // screen and browser tab title.
 
 import { useEffect, useState } from "react";
-import { dbGet, dbSet } from "@/lib/dbStore";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 
 export type Branding = {
   appName: string;        // optional — falls back to the workspace/platform name
@@ -44,14 +44,13 @@ export function saveBranding(b: Branding): void {
 export function subscribeBranding(cb: () => void): () => void {
   if (typeof window === "undefined") return () => {};
   const onLocal = () => cb();
-  const onStorage = (e: StorageEvent) => {
-    if (!e.key || e.key === KEY) cb();
-  };
   window.addEventListener(EVENT, onLocal);
-  window.addEventListener("storage", onStorage);
+  // Branding is stored in the database; STORE_EVENT fires when the live sync
+  // pulls in a change, which replaces the old cross-tab `storage` event.
+  window.addEventListener(STORE_EVENT, onLocal);
   return () => {
     window.removeEventListener(EVENT, onLocal);
-    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(STORE_EVENT, onLocal);
   };
 }
 

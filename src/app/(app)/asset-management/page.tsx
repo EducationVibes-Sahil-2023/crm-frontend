@@ -37,6 +37,7 @@ import {
   type Recipient,
 } from "@/lib/assetNotify";
 import { optionNames } from "@/lib/setup";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 
 const ROLE_KEY = "nexus_asset_view_role";
 const CONDITIONS = ["New", "Excellent", "Good", "Fair", "Poor"];
@@ -87,18 +88,28 @@ export default function AssetManagementPage() {
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      const saved = window.localStorage.getItem(ROLE_KEY);
+    // Re-read on STORE_EVENT as well as on mount: the store hydrates
+    // asynchronously and the live sync can pull a change made elsewhere, so a
+    // single read at mount would leave this showing a stale view.
+    const readStore = () => {
+      const saved = dbGet<string>(ROLE_KEY, "");
       if (saved === "user" || saved === "admin") setRole(saved);
       setNotifs(loadAssetNotifs());
+    };
+    const t = setTimeout(() => {
+      readStore();
       load();
     }, 0);
-    return () => clearTimeout(t);
+    window.addEventListener(STORE_EVENT, readStore);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener(STORE_EVENT, readStore);
+    };
   }, [load]);
 
   function switchRole(r: Role) {
     setRole(r);
-    if (typeof window !== "undefined") window.localStorage.setItem(ROLE_KEY, r);
+    dbSet(ROLE_KEY, r);
   }
 
   // ---- notifications ------------------------------------------------------

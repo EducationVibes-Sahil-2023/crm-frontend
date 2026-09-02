@@ -10,6 +10,11 @@ export const DEMO_CREDENTIALS = {
   password: "admin123",
 };
 
+// The session bearer token and the identity it belongs to. These are the ONLY
+// two things this app keeps in browser storage, and they have to be: the token
+// is what authenticates every request to the database, so it cannot itself be
+// stored there. Everything else — app data, settings, preferences — lives in
+// MySQL and is read through dbStore / superAdminPrefs.
 const TOKEN_KEY = "nexus_token";
 const USER_KEY = "nexus_user";
 
@@ -140,6 +145,10 @@ export async function logout(): Promise<void> {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(TOKEN_KEY);
     window.localStorage.removeItem(USER_KEY);
+    // Drop the hydrated workspace cache as well, so the next account to sign in
+    // on this machine never reads the previous one's data. Imported lazily —
+    // dbStore imports getToken() from here, and a static import would cycle.
+    void import("@/lib/dbStore").then((m) => m.resetStore());
   }
 }
 

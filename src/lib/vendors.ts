@@ -4,7 +4,7 @@
 // broadcast VENDORS_EVENT so open views refresh.
 
 import { apiRequest } from "@/lib/api";
-import { dbGet, isStoreReady } from "@/lib/dbStore";
+import { dbGet, dbSet, isStoreReady } from "@/lib/dbStore";
 
 export type Vendor = {
   id: string;
@@ -121,7 +121,7 @@ export async function hydrateVendors(force = false): Promise<void> {
 /** One-time import of the legacy app_store blob into the vendors table. */
 async function migrateBlobIfNeeded(): Promise<void> {
   try {
-    if (localStorage.getItem(MIGRATED_FLAG)) return;
+    if (dbGet<boolean>(MIGRATED_FLAG, false)) return;
     if (!isStoreReady()) return;
     const blob = dbGet<Vendor[]>(OLD_BLOB_KEY, []);
     if (Array.isArray(blob) && blob.length > 0) {
@@ -136,7 +136,7 @@ async function migrateBlobIfNeeded(): Promise<void> {
         }
       }
     }
-    localStorage.setItem(MIGRATED_FLAG, "1");
+    dbSet(MIGRATED_FLAG, true);
   } catch {
     /* retry on a later hydrate */
   }

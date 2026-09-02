@@ -1,5 +1,7 @@
 // Mobile app: security (face lock / app lock) + live location tracking helpers.
 
+import { dbGet, dbSet } from "@/lib/dbStore";
+
 export type AppSecurity = {
   appLock: boolean;
   pin: string; // 4 digits
@@ -18,20 +20,13 @@ export const DEFAULT_SECURITY: AppSecurity = {
 
 const KEY = "app_security_v1";
 
-function read<T>(k: string, f: T): T {
-  if (typeof window === "undefined") return f;
-  try { const r = window.localStorage.getItem(k); return r ? (JSON.parse(r) as T) : f; } catch { return f; }
-}
-function write<T>(k: string, v: T): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(k, JSON.stringify(v));
-}
-
+// Persisted in the workspace database (app_store) rather than the browser, so
+// the lock settings a user configures follow their account to any device.
 export function loadSecurity(): AppSecurity {
-  return { ...DEFAULT_SECURITY, ...read<Partial<AppSecurity>>(KEY, {}) };
+  return { ...DEFAULT_SECURITY, ...dbGet<Partial<AppSecurity>>(KEY, {}) };
 }
 export function saveSecurity(s: AppSecurity): void {
-  write(KEY, s);
+  dbSet(KEY, s);
 }
 
 // ---------- live tracking ----------

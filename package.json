@@ -9,7 +9,9 @@
     "lint": "eslint",
     "mobile:sync": "cap sync",
     "mobile:android": "cap sync && cap open android",
-    "mobile:ios": "cap sync && cap open ios"
+    "mobile:ios": "cap sync && cap open ios",
+    "test": "node tests/build-modules.mjs && node --test tests/*.test.mjs",
+    "test:storage": "node tests/build-modules.mjs && node --test tests/no-browser-storage.test.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.1",

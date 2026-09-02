@@ -8,7 +8,7 @@
 
 import type { IconName } from "@/components/icons";
 import { apiRequest } from "@/lib/api";
-import { dbGet, isStoreReady } from "@/lib/dbStore";
+import { dbGet, dbSet, isStoreReady } from "@/lib/dbStore";
 
 export type ActivityCategory =
   | "auth"
@@ -125,7 +125,7 @@ export async function hydrateActivities(force = false): Promise<void> {
 /** One-time import of the legacy app_store blob into the activity_log table. */
 async function migrateBlobIfNeeded(): Promise<void> {
   try {
-    if (localStorage.getItem(MIGRATED_FLAG)) return;
+    if (dbGet<boolean>(MIGRATED_FLAG, false)) return;
     if (!isStoreReady()) return; // dbStore not ready — retry next hydrate
     const blob = dbGet<Activity[]>(OLD_BLOB_KEY, []);
     if (Array.isArray(blob) && blob.length > 0) {
@@ -141,7 +141,7 @@ async function migrateBlobIfNeeded(): Promise<void> {
         }
       }
     }
-    localStorage.setItem(MIGRATED_FLAG, "1");
+    dbSet(MIGRATED_FLAG, true);
   } catch {
     /* leave flag unset so a later hydrate can retry */
   }
@@ -209,6 +209,9 @@ export function subscribeActivities(cb: () => void): () => void {
 
 // ---------- helpers ----------
 
+// Reads the signed-in user straight out of the auth cache rather than calling
+// getUser(): lib/auth imports logActivity() from this module, so importing it
+// back would be a cycle. This is the session identity, not app data.
 function readUserName(): string {
   try {
     const raw = window.localStorage.getItem("nexus_user");

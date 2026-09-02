@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { ICON_ANIMS, type IconAnim } from "@/lib/adminMenu";
 import { loadPlatform } from "@/lib/platform";
-import { dbGet, dbSet } from "@/lib/dbStore";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 
 export { ICON_ANIMS, type IconAnim };
 
@@ -220,14 +220,13 @@ export function useAppearance(): Appearance {
   useEffect(() => {
     const read = () => setA(loadAppearance());
     read();
-    const onStorage = (e: StorageEvent) => { if (!e.key || e.key === KEY) read(); };
     window.addEventListener(APPEARANCE_EVENT, read);
     window.addEventListener("platform:updated", read); // inherited default hydrated
-    window.addEventListener("storage", onStorage);
+    window.addEventListener(STORE_EVENT, read);
     return () => {
       window.removeEventListener(APPEARANCE_EVENT, read);
       window.removeEventListener("platform:updated", read);
-      window.removeEventListener("storage", onStorage);
+      window.removeEventListener(STORE_EVENT, read);
     };
   }, []);
   return a;

@@ -6,11 +6,16 @@ import { login, verifyTwoFactor, requestPasswordReset, isAuthenticated, DEMO_CRE
 import { useToast } from "@/components/Toast";
 import { useBranding } from "@/lib/branding";
 import { usePlatform } from "@/lib/platform";
-import { consumePrefillEmail } from "@/lib/trial";
 
 type Errors = { email?: string; password?: string; form?: string };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The ?email= prefill, or "" during SSR / when absent. */
+function readEmailParam(): string {
+  if (typeof window === "undefined") return "";
+  return new URLSearchParams(window.location.search).get("email") ?? "";
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +24,11 @@ export default function LoginPage() {
   const brand = usePlatform().brand;
   const logoBg = brand.logoBg;
   const platformName = brand.name || "CRM";
-  const [email, setEmail] = useState("");
+  // Prefilled from ?email= when the visitor just signed up for a trial on the
+  // landing page. Read as the initial value rather than in an effect — the
+  // screen renders a spinner until checkingSession clears, so there is no
+  // hydration mismatch, and it avoids a needless second render.
+  const [email, setEmail] = useState(readEmailParam);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Errors>({});
@@ -42,17 +51,18 @@ export default function LoginPage() {
     else done();
   }, [router]);
 
-  // If AuthGuard signed us out because the account was deactivated, explain why.
+  // AuthGuard redirects here with ?reason=deactivated when it signs a disabled
+  // account out. Both params are then stripped from the URL so a refresh does
+  // not replay the toast or re-apply a stale prefill.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.localStorage.getItem("nexus_logout_reason") === "deactivated") {
-      window.localStorage.removeItem("nexus_logout_reason");
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("reason") === "deactivated") {
       toast.error("Signed out", "Your account was deactivated by an administrator.");
     }
-    // Prefill the email captured during a landing-page trial signup.
-    const prefill = consumePrefillEmail();
-    const applyPrefill = () => { if (prefill) setEmail(prefill); };
-    applyPrefill();
+    if (params.has("reason") || params.has("email")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, [toast]);
 
   if (checkingSession) {

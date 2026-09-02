@@ -12,6 +12,7 @@ import { isVisibleTo, loadAnnouncements, saveAnnouncements, stripHtml } from "@/
 import { loadConversations, loadMessages, saveConversations } from "@/lib/chat";
 import ClientMenuCustomizer from "@/components/ClientMenuCustomizer";
 import { usePermissions } from "@/components/PermissionsProvider";
+import { STORE_EVENT } from "@/lib/dbStore";
 
 // A unified item shown in the navbar bell — from the notification store,
 // unread announcements, or unread chat conversations.
@@ -104,12 +105,9 @@ function Topbar({
     const init = () => { sync(); setItems(buildItems()); };
     init();
     const unsub = subscribeNotifs(refresh);
-    const onStorage = (e: StorageEvent) => {
-      if (!e.key || ["nexus_announcements_v2", "nexus_chat_conversations", "nexus_chat_messages"].includes(e.key)) refresh();
-    };
     window.addEventListener("profile:updated", sync);
-    window.addEventListener("storage", onStorage);
-    return () => { window.removeEventListener("profile:updated", sync); window.removeEventListener("storage", onStorage); unsub(); };
+    window.addEventListener(STORE_EVENT, refresh);
+    return () => { window.removeEventListener("profile:updated", sync); window.removeEventListener(STORE_EVENT, refresh); unsub(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

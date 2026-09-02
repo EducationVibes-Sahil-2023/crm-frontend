@@ -1,8 +1,9 @@
 // Notifications layer for the app: browser push (Notification API), simulated
-// email, and a persistent in-app notification center. The in-app log persists
-// to the per-tenant database (app_store via dbStore); device prefs stay local.
+// email, and a persistent in-app notification center. Both the in-app log and
+// the channel preferences persist to the per-tenant database (app_store via
+// dbStore) — nothing is kept in browser storage.
 
-import { dbGet, dbSet } from "@/lib/dbStore";
+import { dbGet, dbSet, STORE_EVENT } from "@/lib/dbStore";
 
 export type NotifChannel = "push" | "email" | "app";
 
@@ -22,20 +23,14 @@ const LOG_KEY = "nexus_notifications";
 const PREFS_KEY = "nexus_notif_prefs";
 export const NOTIFS_EVENT = "nexus-notifs-changed";
 
-// ---- preferences ----
+// ---- preferences (DB-backed via dbStore) ----
+const DEFAULT_PREFS: NotifPrefs = { push: false, email: true };
+
 export function loadPrefs(): NotifPrefs {
-  if (typeof window === "undefined") return { push: false, email: true };
-  try {
-    const raw = window.localStorage.getItem(PREFS_KEY);
-    if (raw) return { push: false, email: true, ...JSON.parse(raw) };
-  } catch {
-    /* ignore */
-  }
-  return { push: false, email: true };
+  return { ...DEFAULT_PREFS, ...dbGet<Partial<NotifPrefs>>(PREFS_KEY, {}) };
 }
 export function savePrefs(p: NotifPrefs): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(PREFS_KEY, JSON.stringify(p));
+  dbSet(PREFS_KEY, p);
 }
 
 // ---- in-app log (DB-backed via dbStore) ----
@@ -53,16 +48,17 @@ export function unreadCount(list: Notif[]): number {
   return list.filter((n) => !n.read).length;
 }
 
-// Subscribe to notification changes (same tab + cross tab). Returns unsubscribe.
+// Subscribe to notification changes. Fires for edits made in this tab
+// (NOTIFS_EVENT) and for anything the live store sync pulls in from the
+// database — another tab, another device, or another user (STORE_EVENT).
 export function subscribeNotifs(cb: () => void): () => void {
   if (typeof window === "undefined") return () => {};
-  const onLocal = () => cb();
-  const onStorage = (e: StorageEvent) => { if (e.key === LOG_KEY) cb(); };
-  window.addEventListener(NOTIFS_EVENT, onLocal);
-  window.addEventListener("storage", onStorage);
+  const onChange = () => cb();
+  window.addEventListener(NOTIFS_EVENT, onChange);
+  window.addEventListener(STORE_EVENT, onChange);
   return () => {
-    window.removeEventListener(NOTIFS_EVENT, onLocal);
-    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(NOTIFS_EVENT, onChange);
+    window.removeEventListener(STORE_EVENT, onChange);
   };
 }
 
