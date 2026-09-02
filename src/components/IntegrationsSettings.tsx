@@ -80,6 +80,27 @@ export default function IntegrationsSettings() {
       if (flag !== null) window.history.replaceState({}, "", window.location.pathname);
     }
     gmailApi.status().then(setGStatus).catch(() => setGStatus(null));
+
+    // Show what is ACTUALLY in force. These fields are stored server-side in
+    // settings.gmail_oauth; the local integrations blob also has slots for them,
+    // so without this the form could display a stale copy while a different
+    // value was being used. The secret is never returned — an empty box with a
+    // "stored" placeholder means "leave it alone".
+    gmailApi
+      .config()
+      .then((g) =>
+        setCfg((c) => ({
+          ...c,
+          google: {
+            ...c.google,
+            clientId: g.clientId || c.google.clientId,
+            redirectUri: g.redirectUri || c.google.redirectUri,
+            authDomain: g.authDomain ?? c.google.authDomain,
+            jsOrigin: g.jsOrigin ?? c.google.jsOrigin,
+          },
+        })),
+      )
+      .catch(() => { /* not configured yet, or offline — keep local values */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -93,7 +114,13 @@ export default function IntegrationsSettings() {
     setGBusy(true);
     try {
       // Persist this workspace's own Google app, then start the real OAuth flow.
-      await gmailApi.saveConfig({ clientId: id, clientSecret: secret, redirectUri: cfg.google.redirectUri.trim() });
+      await gmailApi.saveConfig({
+        clientId: id,
+        clientSecret: secret,
+        redirectUri: cfg.google.redirectUri.trim(),
+        authDomain: cfg.google.authDomain.trim(),
+        jsOrigin: cfg.google.jsOrigin.trim(),
+      });
       const { url } = await gmailApi.authUrl("/admin-setup/integrations");
       window.location.href = url;
     } catch (e) {
@@ -285,9 +312,28 @@ export default function IntegrationsSettings() {
               <Input value={cfg.google.apiKey} onChange={(v) => upd("google", "apiKey", v)} placeholder="AIza…" />
             </Field>
             <Field label="Redirect URI">
-              <Input value={cfg.google.redirectUri} onChange={(v) => upd("google", "redirectUri", v)} placeholder="https://…/callback" />
+              <Input value={cfg.google.redirectUri} onChange={(v) => upd("google", "redirectUri", v)} placeholder="https://…/api/gmail/callback" />
+            </Field>
+            <Field label="Authorized domain">
+              <Input value={cfg.google.authDomain} onChange={(v) => upd("google", "authDomain", v)} placeholder="example.com" />
+            </Field>
+            <Field label="JavaScript origin">
+              <Input value={cfg.google.jsOrigin} onChange={(v) => upd("google", "jsOrigin", v)} placeholder="https://app.example.com" />
             </Field>
           </Grid>
+
+          {/* These three must match Google Cloud exactly — Google compares them
+              character for character and a mismatch is the usual reason a flow
+              that works locally fails in production. */}
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+            Add the <span className="font-medium text-slate-700">Redirect URI</span> under Google Cloud →
+            Credentials → Authorized redirect URIs, and the{" "}
+            <span className="font-medium text-slate-700">JavaScript origin</span> under Authorized JavaScript
+            origins (origin only — no path or trailing slash). The{" "}
+            <span className="font-medium text-slate-700">Authorized domain</span> goes on the OAuth consent
+            screen and must cover the callback host. All of this is stored in the database, not in{" "}
+            <code className="rounded bg-slate-200 px-1">.env</code>.
+          </p>
 
           <div>
             <p className="mb-2 text-xs font-medium text-slate-500">Scopes</p>

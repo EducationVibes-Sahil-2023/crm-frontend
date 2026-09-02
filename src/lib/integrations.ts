@@ -12,6 +12,8 @@ export type IntegrationsConfig = {
     clientSecret: string;
     apiKey: string;
     redirectUri: string;
+    authDomain: string;
+    jsOrigin: string;
     connected: boolean;
     account: string;
     scopes: Record<"calendar" | "gmail" | "sheets" | "drive", boolean>;
@@ -29,6 +31,8 @@ export const DEFAULT_INTEGRATIONS: IntegrationsConfig = {
     clientSecret: "",
     apiKey: "",
     redirectUri: "https://app.educationvibes.in/oauth/google/callback",
+    authDomain: "",
+    jsOrigin: "",
     connected: false,
     account: "",
     scopes: { calendar: true, gmail: true, sheets: true, drive: false },

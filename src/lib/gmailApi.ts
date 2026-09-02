@@ -30,12 +30,32 @@ export type GmailMessage = {
   body: string;
 };
 
-export type GmailConfig = { configured: boolean; clientId: string; redirectUri: string; hasSecret: boolean };
+export type GmailConfig = {
+  configured: boolean;
+  clientId: string;
+  redirectUri: string;
+  hasSecret: boolean;
+  // Registered in Google Cloud rather than sent in the OAuth request, but
+  // stored alongside the credentials so there is one place to manage them.
+  authDomain?: string;
+  jsOrigin?: string;
+};
+
+/** Blank fields mean "leave unchanged" — the secret is never sent back. */
+export type GmailConfigInput = {
+  clientId?: string;
+  clientSecret?: string;
+  redirectUri?: string;
+  authDomain?: string;
+  jsOrigin?: string;
+};
 
 export type GmailClient = {
   status: () => Promise<GmailStatus>;
+  /** The OAuth app config actually in force (from settings.gmail_oauth). */
+  config: () => Promise<GmailConfig>;
   getConfig: () => Promise<GmailConfig>;
-  saveConfig: (cfg: { clientId: string; clientSecret?: string; redirectUri?: string }) => Promise<GmailConfig>;
+  saveConfig: (cfg: GmailConfigInput) => Promise<GmailConfig>;
   authUrl: (returnPath?: string) => Promise<{ url: string }>;
   messages: (max?: number) => Promise<GmailListItem[]>;
   message: (id: string) => Promise<GmailMessage>;
@@ -82,8 +102,9 @@ export function createGmailClient(tokenProvider: () => string | null, onUnauthor
 
   return {
     status: () => req<GmailStatus>("/gmail/status"),
+    config: () => req<GmailConfig>("/gmail/config"),
     getConfig: () => req<GmailConfig>("/gmail/config"),
-    saveConfig: (cfg: { clientId: string; clientSecret?: string; redirectUri?: string }) =>
+    saveConfig: (cfg: GmailConfigInput) =>
       req<GmailConfig>("/gmail/config", { method: "POST", body: JSON.stringify(cfg) }),
     authUrl: (returnPath?: string) =>
       req<{ url: string }>(`/gmail/auth-url${returnPath ? `?return=${encodeURIComponent(returnPath)}` : ""}`),
