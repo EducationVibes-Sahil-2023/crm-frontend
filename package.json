@@ -1,11 +1,11 @@
 {
-  "name": "frontend",
+  "name": "dashboard-crm",
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node scripts/run-next.js dev",
+    "dev": "node scripts/run-next.js dev -p 3002",
     "build": "next build",
-    "start": "node scripts/run-next.js start",
+    "start": "node scripts/run-next.js start -p 3002",
     "lint": "eslint",
     "mobile:sync": "cap sync",
     "mobile:android": "cap sync && cap open android",
