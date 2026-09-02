@@ -149,6 +149,9 @@ export async function logout(): Promise<void> {
     // on this machine never reads the previous one's data. Imported lazily —
     // dbStore imports getToken() from here, and a static import would cycle.
     void import("@/lib/dbStore").then((m) => m.resetStore());
+    // The permission set is per workspace too — clear it so the next account
+    // cannot inherit the previous client's module access.
+    void import("@/lib/access").then((m) => m.resetAccess());
   }
 }
 

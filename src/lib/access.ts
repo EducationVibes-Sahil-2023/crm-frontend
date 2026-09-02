@@ -1,6 +1,15 @@
-// Module access for the client app, gated by the workspace's subscription plan
-// and the per-plan permissions the Super Admin configures in Platform Settings.
+// Module access for the client app.
+//
+// The authority is the BACKEND: GET /api/access resolves this workspace's plan
+// together with any per-client overrides the super admin has set, so two
+// clients on the same plan can legitimately differ. Resolving it server-side
+// also keeps it out of reach of the browser.
+//
+// The plan-only calculation below remains as a fallback for when that call
+// hasn't completed or the backend is unreachable — it can only ever produce a
+// per-plan answer, which is why it is not the primary path.
 
+import { apiRequest } from "@/lib/api";
 import { loadPlatform, ALL_FEATURE_KEYS, DEFAULT_PLAN_FEATURES } from "@/lib/platform";
 import { loadSubscription } from "@/lib/subscription";
 
@@ -35,8 +44,45 @@ export function hrefFeature(href: string): string | null {
   return null;
 }
 
-/** The set of feature keys the current workspace's plan unlocks. */
+export const ACCESS_EVENT = "nexus-access-changed";
+
+// Server-resolved feature set for this workspace. null until /api/access answers.
+let serverFeatures: Set<string> | null = null;
+
+/**
+ * Fetch this workspace's effective permissions. Called by AuthGuard at sign-in.
+ *
+ * A failure deliberately leaves `serverFeatures` null so the plan-only fallback
+ * applies — hiding every module because one request failed would look like the
+ * app was broken.
+ */
+export async function hydrateAccess(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const res = await apiRequest<{ features: string[]; source: string }>("/access");
+    // `source: "unavailable"` means the backend could not read the platform
+    // config; its empty list is not an answer, so keep the fallback.
+    if (res.source !== "unavailable" && Array.isArray(res.features)) {
+      serverFeatures = new Set(res.features);
+    }
+  } catch {
+    /* offline — fall back to the plan */
+  } finally {
+    window.dispatchEvent(new Event(ACCESS_EVENT));
+  }
+}
+
+/** Drop the cached set (sign-out) so the next session re-resolves. */
+export function resetAccess(): void {
+  serverFeatures = null;
+}
+
+/** The set of feature keys this workspace may use. */
 export function allowedFeatures(): Set<string> {
+  // Server answer wins: it accounts for this client's own overrides.
+  if (serverFeatures) return new Set(serverFeatures);
+
+  // Fallback: the plan alone.
   const planId = loadSubscription().planId;
   const cfg = loadPlatform();
   const list = cfg.planFeatures?.[planId] ?? DEFAULT_PLAN_FEATURES[planId];

@@ -39,6 +39,11 @@ export type Tenant = {
   storageGb: number;
   createdAt: string;
   lastActive: string;
+  // Per-client permission delta against the plan. Effective access is
+  // (plan features ∪ featuresExtra) − featuresRevoked; the backend is the
+  // authority and resolves it the same way (App\Libraries\FeatureAccess).
+  featuresExtra: string[];
+  featuresRevoked: string[];
   // Generated login the super admin shares with the client (demo: stored so it
   // can be re-shown and tested). In production, never store plaintext.
   tempPassword?: string;

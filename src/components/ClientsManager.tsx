@@ -82,6 +82,10 @@ export default function ClientsManager() {
           adminEmail: t.adminEmail,
           region: t.region,
           storageGb: t.storageGb,
+          // Always sent, so clearing an override reaches the server — an empty
+          // list means "back to exactly what the plan includes".
+          featuresExtra: t.featuresExtra,
+          featuresRevoked: t.featuresRevoked,
         });
         toast.success("Client updated", `${t.company} saved.`);
       } catch (e) {

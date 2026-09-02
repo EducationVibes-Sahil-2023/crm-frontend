@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Icon } from "@/components/icons";
 import SearchSelect from "@/components/SearchSelect";
+import ClientPermissions from "@/components/ClientPermissions";
 import { useToast } from "@/components/Toast";
 import { DB_HOST, PLANS, REGIONS, dbNameFor, slugify, type Plan, type Tenant, type TenantStatus } from "@/lib/tenants";
 
@@ -30,6 +31,13 @@ export default function ClientForm({
     // Database name minus the mandatory `tenant_` prefix (editable when creating).
     dbSuffix: (initial?.dbName ?? "").replace(/^tenant_/, ""),
   });
+  // Per-client permission delta against the plan. Empty on both sides means
+  // "exactly what the plan includes" and stores no override at all.
+  const [perms, setPerms] = useState({
+    extra: initial?.featuresExtra ?? [],
+    revoked: initial?.featuresRevoked ?? [],
+  });
+
   // Until the admin edits the database name, it mirrors the subdomain.
   const [dbEdited, setDbEdited] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -87,6 +95,8 @@ export default function ClientForm({
       storageGb: initial?.storageGb ?? 0,
       createdAt: initial?.createdAt ?? now,
       lastActive: initial?.lastActive ?? "just now",
+      featuresExtra: perms.extra,
+      featuresRevoked: perms.revoked,
     };
     onSave(tenant);
     toast.success(isEdit ? "Client updated" : "Client provisioned", isEdit ? f.company : `${f.company} · database ${dbName} created.`);
@@ -125,6 +135,15 @@ export default function ClientForm({
             <F label="Status"><SearchSelect value={f.status} onChange={(v) => set("status", v)} options={["Trial", "Active", "Suspended"]} searchable={false} /></F>
             <F label="Region" full><SearchSelect value={f.region} onChange={(v) => set("region", v)} options={REGIONS} /></F>
           </div>
+
+          {/* Permissions — the plan pre-selects, the super admin can override
+              per client. Stored as a delta so a later plan change keeps these. */}
+          <ClientPermissions
+            planId={f.plan.toLowerCase()}
+            extra={perms.extra}
+            revoked={perms.revoked}
+            onChange={setPerms}
+          />
 
           {/* DB provisioning */}
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">

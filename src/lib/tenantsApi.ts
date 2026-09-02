@@ -60,6 +60,8 @@ export function provisionTenant(t: Tenant): Promise<ProvisionResult> {
       adminEmail: t.adminEmail,
       password: t.tempPassword,
       plan: t.plan,
+      featuresExtra: t.featuresExtra ?? [],
+      featuresRevoked: t.featuresRevoked ?? [],
       region: t.region,
       status: t.status,
       storageGb: t.storageGb,
@@ -70,7 +72,12 @@ export function provisionTenant(t: Tenant): Promise<ProvisionResult> {
 /** Update a client's registry record (company, plan, status, admin, etc.). */
 export function updateTenant(
   database: string,
-  patch: Partial<{ company: string; plan: string; status: string; adminName: string; adminEmail: string; region: string; storageGb: number }>,
+  patch: Partial<{
+    company: string; plan: string; status: string; adminName: string; adminEmail: string;
+    region: string; storageGb: number;
+    // Complete lists, not deltas-of-deltas: [] means "no override, use the plan".
+    featuresExtra: string[]; featuresRevoked: string[];
+  }>,
 ): Promise<{ updated: boolean; database: string }> {
   return call("/tenants/update", { method: "POST", body: JSON.stringify({ database, ...patch }) });
 }
@@ -122,6 +129,9 @@ export type ServerClient = {
   exists: boolean;
   createdAt: string | null;
   lastLoginAt: string | null; // last real client login (not impersonation)
+  featuresExtra?: string[];   // granted on top of the plan
+  featuresRevoked?: string[]; // removed from the plan
+  features?: string[];        // resolved by the backend (plan ∪ extra) − revoked
 };
 
 type TenantsList = { databases: { database: string; users: number }[]; clients: ServerClient[]; count: number };
@@ -161,5 +171,7 @@ export function serverClientToTenant(s: ServerClient): Tenant {
     lastActive: s.lastLoginAt
       ? new Date(s.lastLoginAt.replace(" ", "T")).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
       : "—",
+    featuresExtra: s.featuresExtra ?? [],
+    featuresRevoked: s.featuresRevoked ?? [],
   };
 }

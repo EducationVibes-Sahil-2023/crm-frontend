@@ -11,7 +11,7 @@ import { getUser } from "@/lib/auth";
 import { userGet, userSet } from "@/lib/userStore";
 import { listDirectory } from "@/lib/directory";
 import { getTablePageSize } from "@/lib/appearance";
-import { optionNames } from "@/lib/setup";
+import { colorHex, optionNames, useSetupOptions } from "@/lib/setup";
 import { STATE_NAMES, allCities, citiesOf } from "@/lib/places";
 import { logActivity } from "@/lib/activity";
 import { logLeadActivity } from "@/lib/leadExtras";
@@ -148,14 +148,13 @@ const STATUS_STYLE: Record<string, string> = {
   Won: "bg-emerald-100 text-emerald-700",
   Lost: "bg-rose-100 text-rose-700",
 };
-const STATUS_BAR: Record<string, string> = {
-  New: "bg-sky-400",
-  Contacted: "bg-amber-400",
-  Qualified: "bg-indigo-400",
-  Proposal: "bg-violet-400",
-  Won: "bg-emerald-400",
-  Lost: "bg-rose-400",
-};
+// Statuses are admin-defined (Admin Setup → Status) and start empty, so nothing
+// here may assume a fixed vocabulary. Won/lost are recognised by meaning, which
+// is the only thing that generalises across workspaces; colours come from the
+// configured option, with this palette as the fallback.
+const STATUS_FALLBACK = ["#38bdf8", "#fbbf24", "#818cf8", "#a78bfa", "#34d399", "#fb7185", "#22d3ee", "#f472b6"];
+const WON_RE = /\b(won|converted|closed[\s-]?won|admitted|enrolled|joined|success(ful)?|deal\s?closed)\b/i;
+const LOST_RE = /\b(lost|closed[\s-]?lost|drop(ped)?|reject(ed)?|cancel(l?ed)?|not\s?interested|junk|dead|invalid)\b/i;
 const TYPE_STYLE: Record<string, string> = {
   Hot: "bg-rose-100 text-rose-700",
   Warm: "bg-amber-100 text-amber-700",
@@ -165,11 +164,23 @@ const AVATAR_COLORS = ["bg-blue-100 text-blue-700", "bg-emerald-100 text-emerald
 
 const PAGE_SIZES = [25, 50, 100];
 
+/** Configured option names first, then any value the data uses that isn't configured. */
+function unionOptions(configured: string[], used: (string | undefined)[]): string[] {
+  const extra = [...new Set(used)]
+    .filter((v): v is string => !!v && v !== "—" && !configured.includes(v))
+    .sort();
+  return [...configured, ...extra];
+}
+
 export default function LeadsPage() {
   const toast = useToast();
   const { can } = usePermissions();
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<Lead[]>([]);
+
+  const statusOpts = useSetupOptions("status");
+  const sourceOpts = useSetupOptions("source");
+  const typeOpts = useSetupOptions("type");
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All Statuses");
@@ -237,6 +248,22 @@ export default function LeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Filter dropdowns are built from the admin-defined lists plus whatever the
+  // data actually contains — a hard-coded list would silently filter to nothing
+  // in any workspace that renamed its statuses, sources or types.
+  const statusOptions = useMemo(
+    () => ["All Statuses", ...unionOptions(statusOpts.map((o) => o.name), leads.map((l) => l.status))],
+    [statusOpts, leads],
+  );
+  const sourceOptions = useMemo(
+    () => ["All Sources", ...unionOptions(sourceOpts.map((o) => o.name), leads.map((l) => l.source))],
+    [sourceOpts, leads],
+  );
+  const typeOptions = useMemo(
+    () => ["All Types", ...unionOptions(typeOpts.map((o) => o.name), leads.map((l) => l.type))],
+    [typeOpts, leads],
+  );
+
   const stateOptions = useMemo(() => ["All States", ...STATE_NAMES], []);
   // City filter follows the selected state (all cities when no state is picked).
   const cityOptions = useMemo(() => ["All Cities", ...(stateF !== "All States" ? citiesOf(stateF) : allCities())], [stateF]);
@@ -259,21 +286,30 @@ export default function LeadsPage() {
 
   const deletedCount = useMemo(() => leads.filter((l) => l.deleted).length, [leads]);
 
-  // Summary stats for the hero (active leads only).
+  // Summary stats for the hero (active leads only). The status breakdown follows
+  // the workspace's configured statuses, then appends any value present in the
+  // data that isn't configured — so a renamed status can never hide leads.
   const stats = useMemo(() => {
     const active = leads.filter((l) => !l.deleted);
     const by = (s: string) => active.filter((l) => l.status === s).length;
-    const order = ["New", "Contacted", "Qualified", "Proposal", "Won", "Lost"];
+    const configured = statusOpts.map((o) => o.name);
+    const order = [...configured, ...[...new Set(active.map((l) => l.status))].filter((s) => s && !configured.includes(s)).sort()];
     const t = active.length || 1;
+    const won = active.filter((l) => WON_RE.test(l.status)).length;
+    const lost = active.filter((l) => LOST_RE.test(l.status)).length;
     return {
       total: active.length,
-      qualified: by("Qualified"),
-      won: by("Won"),
-      hot: active.filter((l) => l.type === "Hot").length,
-      conversion: Math.round((by("Won") / t) * 100),
-      breakdown: order.map((s) => ({ status: s, count: by(s) })),
+      open: active.length - won - lost,
+      won,
+      lost,
+      conversion: Math.round((won / t) * 100),
+      breakdown: order.map((s, i) => ({
+        status: s,
+        count: by(s),
+        color: colorHex(statusOpts.find((o) => o.name === s)?.color ?? STATUS_FALLBACK[i % STATUS_FALLBACK.length]),
+      })),
     };
-  }, [leads]);
+  }, [leads, statusOpts]);
 
   useEffect(() => {
     const reset = () => setPage(1);
@@ -411,9 +447,9 @@ export default function LeadsPage() {
         {/* Stat chips */}
         <div className="relative mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-5">
           <HeroStat label="Total leads" value={stats.total} icon="leads" />
-          <HeroStat label="Qualified" value={stats.qualified} icon="check" />
+          <HeroStat label="Open" value={stats.open} icon="activity" />
           <HeroStat label="Won" value={stats.won} icon="win" />
-          <HeroStat label="Hot leads" value={stats.hot} icon="trendUp" />
+          <HeroStat label="Lost" value={stats.lost} icon="close" />
           <HeroStat label="Conversion" value={`${stats.conversion}%`} icon="deals" />
         </div>
 
@@ -423,13 +459,13 @@ export default function LeadsPage() {
             {stats.breakdown.map((b) => {
               const pct = stats.total ? (b.count / stats.total) * 100 : 0;
               if (pct === 0) return null;
-              return <div key={b.status} className={STATUS_BAR[b.status]} style={{ width: `${pct}%` }} title={`${b.status}: ${b.count}`} />;
+              return <div key={b.status} style={{ width: `${pct}%`, backgroundColor: b.color }} title={`${b.status}: ${b.count}`} />;
             })}
           </div>
           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
-            {stats.breakdown.map((b) => (
+            {stats.breakdown.filter((b) => b.count > 0).map((b) => (
               <span key={b.status} className="flex items-center gap-1.5 text-[11px] text-blue-100">
-                <span className={`h-2 w-2 rounded-full ${STATUS_BAR[b.status]}`} />
+                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: b.color }} />
                 {b.status} <span className="font-semibold text-white">{b.count}</span>
               </span>
             ))}
@@ -447,9 +483,9 @@ export default function LeadsPage() {
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name, company, or email..." className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
             </div>
           </div>
-          <Select label="Status" value={status} onChange={setStatus} options={["All Statuses", "New", "Contacted", "Qualified", "Proposal", "Won", "Lost"]} />
-          <Select label="Lead Source" value={source} onChange={setSource} options={["All Sources", "Website", "Referral", "Social", "Email", "Cold Call"]} />
-          <Select label="Type" value={type} onChange={setType} options={["All Types", "Hot", "Warm", "Cold"]} />
+          <Select label="Status" value={status} onChange={setStatus} options={statusOptions} />
+          <Select label="Lead Source" value={source} onChange={setSource} options={sourceOptions} />
+          <Select label="Type" value={type} onChange={setType} options={typeOptions} />
           <Select label="State" value={stateF} onChange={(v) => { setStateF(v); if (v !== "All States" && !citiesOf(v).includes(city)) setCity("All Cities"); }} options={stateOptions} />
           <Select label="City" value={city} onChange={setCity} options={cityOptions} />
           <div>

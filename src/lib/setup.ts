@@ -220,6 +220,23 @@ export function optionNames(kind: OptionKind): string[] {
   return loadSetup()[kind].map((o) => o.name);
 }
 
+/**
+ * Live options for a kind, with their colours — re-renders when the setup lists
+ * change (and when hydrateSetup() first fills them at sign-in). Use this rather
+ * than a hard-coded list anywhere a screen groups or charts by status/source/
+ * type: those vocabularies are admin-defined and start empty.
+ */
+export function useSetupOptions(kind: OptionKind): SetupOption[] {
+  const [opts, setOpts] = useState<SetupOption[]>(() => loadSetup()[kind]);
+  useEffect(() => {
+    const read = () => setOpts(loadSetup()[kind]);
+    read();
+    window.addEventListener(SETUP_EVENT, read);
+    return () => window.removeEventListener(SETUP_EVENT, read);
+  }, [kind]);
+  return opts;
+}
+
 /** Live names for a kind — re-renders when the setup lists change. */
 export function useSetupNames(kind: OptionKind): string[] {
   const [names, setNames] = useState<string[]>(() => optionNames(kind));

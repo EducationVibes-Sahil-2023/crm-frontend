@@ -10,7 +10,7 @@ import { useAppearance, sidebarAccentColors, type IconAnim } from "@/lib/appeara
 import { tint } from "@/lib/adminMenu";
 import { useBranding, initials } from "@/lib/branding";
 import { usePlatform } from "@/lib/platform";
-import { allowedFeatures, isHrefAllowed, ALL_FEATURE_KEYS } from "@/lib/access";
+import { allowedFeatures, isHrefAllowed, ALL_FEATURE_KEYS, ACCESS_EVENT } from "@/lib/access";
 import { hrefModule } from "@/lib/permissions";
 import { usePermissions } from "@/components/PermissionsProvider";
 import { STORE_EVENT } from "@/lib/dbStore";
@@ -182,8 +182,14 @@ export default function Sidebar({
       setAllowed(allowedFeatures());
     };
     sync();
+    // ACCESS_EVENT fires when /api/access answers — the server-resolved set
+    // includes this client's own overrides, which STORE_EVENT knows nothing of.
+    window.addEventListener(ACCESS_EVENT, sync);
     window.addEventListener(STORE_EVENT, sync);
-    return () => window.removeEventListener(STORE_EVENT, sync);
+    return () => {
+      window.removeEventListener(ACCESS_EVENT, sync);
+      window.removeEventListener(STORE_EVENT, sync);
+    };
   }, []);
 
   // Admin menu customization (order / rename / re-slug / re-icon / hide),
