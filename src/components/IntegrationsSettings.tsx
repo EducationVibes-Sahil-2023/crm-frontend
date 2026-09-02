@@ -87,7 +87,7 @@ export default function IntegrationsSettings() {
     // value was being used. The secret is never returned — an empty box with a
     // "stored" placeholder means "leave it alone".
     gmailApi
-      .config()
+      .getConfig()
       .then((g) =>
         setCfg((c) => ({
           ...c,

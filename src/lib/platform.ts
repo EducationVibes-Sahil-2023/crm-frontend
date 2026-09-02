@@ -23,7 +23,20 @@ export type PlatformConfig = {
   plans: PlatformPlan[];
   reviews: Review[];
   payment: { provider: string; enabled: boolean; keyId: string; keySecret: string; currency: string; webhookUrl: string };
-  google: { enabled: boolean; clientId: string; clientSecret: string; gmail: boolean; calendar: boolean; meet: boolean };
+  // The platform's own Google OAuth app. clientId/secret/redirectUri/authDomain/
+  // jsOrigin are mirrored here for the console form, but the DATABASE
+  // (settings.gmail_oauth) is the authority — see saveGoogleToServer().
+  google: {
+    enabled: boolean;
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
+    authDomain: string;
+    jsOrigin: string;
+    gmail: boolean;
+    calendar: boolean;
+    meet: boolean;
+  };
   automation: Record<string, boolean>;
   // Which modules each subscription plan unlocks (planId -> feature keys).
   planFeatures: Record<string, string[]>;
@@ -161,7 +174,7 @@ export const DEFAULT_PLATFORM: PlatformConfig = {
     { id: "r3", name: "David Chen", role: "Founder, Globex", rating: 4, text: "Razorpay billing and the clean dashboards make running our subscription effortless." },
   ],
   payment: { provider: "Razorpay", enabled: false, keyId: "", keySecret: "", currency: "INR", webhookUrl: "https://api.crm-cloud.app/webhooks/razorpay" },
-  google: { enabled: false, clientId: "", clientSecret: "", gmail: true, calendar: true, meet: true },
+  google: { enabled: false, clientId: "", clientSecret: "", redirectUri: "", authDomain: "", jsOrigin: "", gmail: true, calendar: true, meet: true },
   automation: Object.fromEntries(AUTOMATIONS.map((a) => [a.key, ["welcomeEmail", "trialReminder", "invoiceEmail"].includes(a.key)])),
   planFeatures: DEFAULT_PLAN_FEATURES,
   featureCatalog: [...ALL_FEATURE_KEYS],

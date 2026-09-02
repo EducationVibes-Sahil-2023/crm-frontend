@@ -74,7 +74,20 @@ export default function PlatformSettings() {
       await ensureSuperAdminToken();
       try {
         const sc = await superGmail.getConfig();
-        if (active && sc.configured) setGtest({ status: "ok", msg: `Server configured · ${sc.clientId.slice(0, 24)}…` });
+        if (!active) return;
+        if (sc.configured) setGtest({ status: "ok", msg: `Server configured · ${sc.clientId.slice(0, 24)}…` });
+        // Show what the backend actually holds. The database is the authority,
+        // so a stale value in this local config must not be what the admin sees.
+        setCfg((c) => ({
+          ...c,
+          google: {
+            ...c.google,
+            clientId: sc.clientId || c.google.clientId,
+            redirectUri: sc.redirectUri || c.google.redirectUri,
+            authDomain: sc.authDomain ?? c.google.authDomain,
+            jsOrigin: sc.jsOrigin ?? c.google.jsOrigin,
+          },
+        }));
       } catch { /* backend offline — stay idle */ }
     })();
     return () => { active = false; };
@@ -94,7 +107,13 @@ export default function PlatformSettings() {
     setGtest({ status: "testing", msg: "Saving to server…" });
     try {
       await ensureSuperAdminToken();
-      const res = await superGmail.saveConfig({ clientId: id, clientSecret: secret });
+      const res = await superGmail.saveConfig({
+        clientId: id,
+        clientSecret: secret,
+        redirectUri: cfg.google.redirectUri.trim(),
+        authDomain: cfg.google.authDomain.trim(),
+        jsOrigin: cfg.google.jsOrigin.trim(),
+      });
       if (res.configured) {
         setGtest({ status: "ok", msg: "Saved — the server can now connect Gmail." });
         toast.success("Google configured", "Gmail OAuth is live. Connect an inbox from the Mail page.");
@@ -442,7 +461,31 @@ export default function PlatformSettings() {
               <Input value={cfg.google.clientId} onChange={(v) => { setGoogle("clientId", v); setGtest({ status: "idle", msg: "" }); }} placeholder="xxxx.apps.googleusercontent.com" />
             </Field>
             <Field label="Client Secret"><Secret value={cfg.google.clientSecret} onChange={(v) => setGoogle("clientSecret", v)} placeholder="GOCSPX-…" /></Field>
+            <Field label="Redirect URI">
+              <Input value={cfg.google.redirectUri} onChange={(v) => setGoogle("redirectUri", v)} placeholder="https://…/api/gmail/callback" />
+            </Field>
+            <Field label="Authorized domain">
+              <Input value={cfg.google.authDomain} onChange={(v) => setGoogle("authDomain", v)} placeholder="example.com" />
+            </Field>
+            <Field label="JavaScript origin">
+              <Input value={cfg.google.jsOrigin} onChange={(v) => setGoogle("jsOrigin", v)} placeholder="https://app.example.com" />
+            </Field>
           </Grid>
+
+          {/* Google compares these character for character against the Cloud
+              console, which is the usual reason a flow that works locally fails
+              in production. Left blank, the backend derives the callback from
+              app.baseURL rather than guessing wrong. */}
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
+            Add the <span className="font-medium text-slate-700">Redirect URI</span> under Google Cloud →
+            Credentials → Authorized redirect URIs, and the{" "}
+            <span className="font-medium text-slate-700">JavaScript origin</span> under Authorized JavaScript
+            origins (origin only — no path or trailing slash). The{" "}
+            <span className="font-medium text-slate-700">Authorized domain</span> belongs on the OAuth consent
+            screen and must cover the callback host. Stored in the database
+            (<code className="rounded bg-slate-200 px-1">settings.gmail_oauth</code>), never in{" "}
+            <code className="rounded bg-slate-200 px-1">.env</code>. Leave a field blank to keep its current value.
+          </p>
 
           {/* OAuth test */}
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">

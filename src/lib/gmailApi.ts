@@ -52,8 +52,6 @@ export type GmailConfigInput = {
 
 export type GmailClient = {
   status: () => Promise<GmailStatus>;
-  /** The OAuth app config actually in force (from settings.gmail_oauth). */
-  config: () => Promise<GmailConfig>;
   getConfig: () => Promise<GmailConfig>;
   saveConfig: (cfg: GmailConfigInput) => Promise<GmailConfig>;
   authUrl: (returnPath?: string) => Promise<{ url: string }>;
@@ -102,7 +100,6 @@ export function createGmailClient(tokenProvider: () => string | null, onUnauthor
 
   return {
     status: () => req<GmailStatus>("/gmail/status"),
-    config: () => req<GmailConfig>("/gmail/config"),
     getConfig: () => req<GmailConfig>("/gmail/config"),
     saveConfig: (cfg: GmailConfigInput) =>
       req<GmailConfig>("/gmail/config", { method: "POST", body: JSON.stringify(cfg) }),

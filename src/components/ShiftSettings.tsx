@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import SearchableSelect from "@/components/SearchableSelect";
@@ -32,8 +32,17 @@ export default function ShiftSettings() {
   const [shifts, setShifts] = useState<Shift[]>(loadShifts);
   const [assign, setAssign] = useState<Record<string, string>>(loadAssignments);
 
-  useEffect(() => { saveShifts(shifts); }, [shifts]);
-  useEffect(() => { saveAssignments(assign); }, [assign]);
+  // Persist on change, but NOT on mount. The effect would otherwise fire with
+  // the value just loaded and write it straight back — a full table rewrite
+  // every time the page opens, and worse: loadShifts() falls back to
+  // DEFAULT_SHIFTS when the list is empty, so opening this page would
+  // resurrect the defaults for an admin who had deliberately removed them.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    saveShifts(shifts);
+    saveAssignments(assign);
+  }, [shifts, assign]);
 
   // new shift form
   const [name, setName] = useState("");

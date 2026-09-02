@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Icon } from "@/components/icons";
 import { useToast } from "@/components/Toast";
 import { colorBadge } from "@/lib/setup";
@@ -21,8 +21,15 @@ export default function LocationSettings() {
   const [types, setTypes] = useState<WorkType[]>(loadWorkTypes);
   const [locations, setLocations] = useState<WorkLocation[]>(loadLocations);
 
-  useEffect(() => { saveWorkTypes(types); }, [types]);
-  useEffect(() => { saveLocations(locations); }, [locations]);
+  // Persist on change, but NOT on mount — see the note in ShiftSettings: the
+  // mount write would re-seed DEFAULT_WORK_TYPES / DEFAULT_LOCATIONS over an
+  // intentionally empty list.
+  const firstRun = useRef(true);
+  useEffect(() => {
+    if (firstRun.current) { firstRun.current = false; return; }
+    saveWorkTypes(types);
+    saveLocations(locations);
+  }, [types, locations]);
 
   // work-type form
   const [typeName, setTypeName] = useState("");
